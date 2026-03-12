@@ -306,18 +306,6 @@ install_homebrew() {
 # ========== 配置镜像源 ==========
 configure_mirror() {
     local prefix="$1"
-
-    if [[ "$MIRROR_NAME" == "官方源" ]]; then
-        info "使用官方源，跳过镜像配置。"
-        return
-    fi
-
-    info "配置 ${MIRROR_NAME} 镜像源..."
-
-    # 设置 brew git remote
-    git -C "$prefix" remote set-url origin "$BREW_GIT_REMOTE" 2>/dev/null || true
-
-    # 设置环境变量到 shell 配置文件
     local shell_profile
     shell_profile="$(get_shell_profile)"
 
@@ -326,12 +314,27 @@ configure_mirror() {
         # 创建备份
         cp "$shell_profile" "${shell_profile}.homebrew_backup.$(date +%Y%m%d%H%M%S)"
 
-        # 移除旧的 Homebrew 镜像相关配置
+        # 移除旧的 Homebrew 镜像相关配置，并清理多余的空行
         local temp_file
         temp_file="$(mktemp)"
-        grep -v "HOMEBREW_BREW_GIT_REMOTE\|HOMEBREW_CORE_GIT_REMOTE\|HOMEBREW_BOTTLE_DOMAIN\|HOMEBREW_API_DOMAIN\|HOMEBREW_CASK_GIT_REMOTE\|# Homebrew 镜像" "$shell_profile" > "$temp_file" 2>/dev/null || true
+        awk '
+        /HOMEBREW_BREW_GIT_REMOTE|HOMEBREW_CORE_GIT_REMOTE|HOMEBREW_BOTTLE_DOMAIN|HOMEBREW_API_DOMAIN|HOMEBREW_CASK_GIT_REMOTE|# Homebrew 镜像/ { next }
+        NF == 0 { blank++ }
+        NF > 0 { blank=0 }
+        blank <= 1 { print }
+        ' "$shell_profile" > "$temp_file" 2>/dev/null || true
         mv "$temp_file" "$shell_profile"
     fi
+
+    # 设置 brew git remote
+    git -C "$prefix" remote set-url origin "$BREW_GIT_REMOTE" 2>/dev/null || true
+
+    if [[ "$MIRROR_NAME" == "官方源" ]]; then
+        info "使用官方源，已清理旧的镜像配置。"
+        return
+    fi
+
+    info "配置 ${MIRROR_NAME} 镜像源..."
 
     # 写入新的镜像配置
     {
@@ -354,10 +357,17 @@ configure_shell_env() {
     local shell_profile
     shell_profile="$(get_shell_profile)"
 
-    # 检查是否已经有 brew shellenv 配置
-    if [[ -f "$shell_profile" ]] && grep -q "brew shellenv" "$shell_profile" 2>/dev/null; then
-        info "Shell 环境变量已配置，跳过。"
-        return
+    # 先移除旧的 Homebrew 环境配置
+    if [[ -f "$shell_profile" ]]; then
+        local temp_file
+        temp_file="$(mktemp)"
+        awk '
+        /brew shellenv|# Homebrew 环境配置/ { next }
+        NF == 0 { blank++ }
+        NF > 0 { blank=0 }
+        blank <= 1 { print }
+        ' "$shell_profile" > "$temp_file" 2>/dev/null || true
+        mv "$temp_file" "$shell_profile"
     fi
 
     info "配置 Homebrew 环境变量到 $shell_profile ..."
