@@ -208,6 +208,15 @@ select_mirror() {
             HOMEBREW_API_DOMAIN=""
             HOMEBREW_CASK_GIT_REMOTE=""
             ;;
+        # 彩蛋：腾讯云镜像源（隐藏选项）
+        5)
+            MIRROR_NAME="Tencent Cloud"
+            BREW_GIT_REMOTE="https://mirrors.cloud.tencent.com/homebrew/brew.git"
+            HOMEBREW_CORE_GIT_REMOTE="https://mirrors.cloud.tencent.com/homebrew/homebrew-core.git"
+            HOMEBREW_BOTTLE_DOMAIN="https://mirrors.cloud.tencent.com/homebrew-bottles"
+            HOMEBREW_API_DOMAIN="https://mirrors.cloud.tencent.com/homebrew-bottles/api"
+            HOMEBREW_CASK_GIT_REMOTE="https://mirrors.cloud.tencent.com/homebrew/homebrew-cask.git"
+            ;;
         *)
             MIRROR_NAME="USTC"
             BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"
