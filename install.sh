@@ -258,14 +258,17 @@ install_homebrew() {
         if [[ -d "$prefix/.git" ]]; then
             info "检测到已有的 git 仓库，更新中... (尝试 $((retry_count+1))/$max_retries)"
             git -C "$prefix" remote set-url origin "$BREW_GIT_REMOTE"
-            if git -C "$prefix" fetch --force origin; then
-                git -C "$prefix" reset --hard origin/master
+            if git -C "$prefix" fetch --force origin && git -C "$prefix" reset --hard origin/master; then
                 clone_success=true
                 break
             fi
         else
             info "正在克隆... (尝试 $((retry_count+1))/$max_retries)"
-            if git clone --depth=1 "$BREW_GIT_REMOTE" "$prefix"; then
+            # 采用 init + fetch + reset 的方式，避免目标目录非空时 clone 失败
+            git -C "$prefix" init -q
+            git -C "$prefix" config remote.origin.url "$BREW_GIT_REMOTE"
+            git -C "$prefix" config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+            if git -C "$prefix" fetch --force --depth=1 origin && git -C "$prefix" reset --hard origin/master; then
                 clone_success=true
                 break
             fi
@@ -417,8 +420,8 @@ show_uninstall_help() {
     echo -e "  运行以下命令卸载:"
     echo -e "  ${CYAN}/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)\"${NC}"
     echo ""
-    echo -e "  如果无法访问 GitHub，可使用镜像:"
-    echo -e "  ${CYAN}/bin/bash -c \"\$(curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/install/uninstall.sh)\"${NC}"
+    echo -e "  如果无法访问 GitHub，可使用国内镜像（Gitee）:"
+    echo -e "  ${CYAN}/bin/bash -c \"\$(curl -fsSL https://gitee.com/ineo6/homebrew-install/raw/master/uninstall.sh)\"${NC}"
     echo ""
 }
 
