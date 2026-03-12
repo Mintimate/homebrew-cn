@@ -133,6 +133,8 @@ wait_for_xcode_clt() {
 }
 
 preflight_check() {
+    info "正在进行安装前置检查..."
+
     # 检查是否以 root 运行（不推荐）
     if [[ "$EUID" -eq 0 ]]; then
         warn "检测到以 root 用户运行，Homebrew 不推荐以 root 安装。"
@@ -415,11 +417,11 @@ main() {
         exit 0
     fi
 
-    # 前置检查
-    preflight_check
-
     # 选择镜像源
     select_mirror
+
+    # 前置检查
+    preflight_check
 
     # 安装 Homebrew
     install_homebrew "$arch"
