@@ -9,7 +9,8 @@
 - 🐚 **多 Shell 支持** — 自动适配 Zsh（默认）/ Bash，写入对应配置文件
 - 🔍 **智能检测** — 自动检测系统架构、前置依赖（git、curl 等）
 - 🔄 **已安装适配** — 已有 Homebrew 时可仅重新配置镜像源
-- 💾 **自动备份** — 修改 Shell 配置文件前自动创建备份
+- �️ **一键卸载** — 内置完整卸载功能，自动清理软件包、目录和环境变量
+- �💾 **自动备份** — 修改 Shell 配置文件前自动创建备份
 
 ## 🚀 快速开始
 
@@ -34,11 +35,23 @@ cd homebrew-cn
 /bin/zsh install.sh
 ```
 
-### 查看卸载帮助
+### 卸载 Homebrew
+
+脚本内置了完整的卸载功能，会自动卸载所有已安装的软件包、清理安装目录及缓存、移除 Shell 配置文件中的 Homebrew 环境变量，并在操作前自动备份配置文件。
+
+在线执行：
+
+```zsh
+/bin/zsh -c "$(curl -fsSL https://cnb.cool/Mintimate/tool-forge/homebrew-cn/-/git/raw/main/install.sh)" -- --uninstall
+```
+
+本地执行：
 
 ```zsh
 /bin/zsh install.sh --uninstall
 ```
+
+> 脚本会列出当前已安装的软件包数量，需输入 `yes` 确认后才开始卸载，不会误操作。
 
 ## 📋 使用流程
 
@@ -134,13 +147,20 @@ A: 脚本会自动触发安装，请在弹出的对话框中点击"安装"，安
 
 ### Q: 如何卸载 Homebrew？
 
-A: 运行以下命令：
+A: 使用脚本自带的卸载功能（推荐）：
+
+```zsh
+/bin/zsh -c "$(curl -fsSL https://cnb.cool/Mintimate/tool-forge/homebrew-cn/-/git/raw/main/install.sh)" -- --uninstall
+```
+
+也可以使用官方卸载脚本：
 
 ```bash
 /bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
 ```
 
-如果无法运行，可以手动删除并移除环境变量内相关配置：
+如果脚本都无法运行，可以手动删除并移除环境变量内相关配置：
+
 ```bash
 # Apple Silicon
 sudo rm -rf /opt/homebrew
@@ -148,7 +168,12 @@ sudo rm -rf /opt/homebrew
 # Intel (x86_64)
 sudo rm -rf /usr/local/Homebrew
 sudo rm -rf /usr/local/Caskroom
+sudo rm -rf /usr/local/Cellar
 sudo rm -rf /usr/local/bin/brew
+
+# 通用缓存清理
+rm -rf ~/Library/Caches/Homebrew
+rm -rf ~/Library/Logs/Homebrew
 ```
 
 ## 🔗 参考链接

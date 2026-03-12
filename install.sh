@@ -423,15 +423,182 @@ show_finish_info() {
 }
 
 # ========== 卸载功能 ==========
-show_uninstall_help() {
+uninstall_homebrew() {
+    local arch="$1"
+    local prefix
+    prefix="$(get_homebrew_prefix "$arch")"
+
     echo ""
-    echo -e "${BOLD}${RED}卸载 Homebrew:${NC}"
+    echo -e "${BOLD}${RED}============================================${NC}"
+    echo -e "${BOLD}${RED}       Homebrew 卸载程序 🗑️               ${NC}"
+    echo -e "${BOLD}${RED}============================================${NC}"
     echo ""
-    echo -e "  运行以下命令卸载:"
-    echo -e "  ${CYAN}/bin/bash -c \"\$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)\"${NC}"
+
+    # 检查 Homebrew 是否已安装
+    if [[ ! -f "$prefix/bin/brew" ]]; then
+        warn "未检测到 Homebrew 安装（$prefix/bin/brew 不存在）。"
+        echo ""
+        echo -e "如果 Homebrew 安装在其他位置，你可以手动删除相关目录。"
+        echo -e "常见安装位置："
+        echo -e "  ${CYAN}/opt/homebrew${NC}     (Apple Silicon)"
+        echo -e "  ${CYAN}/usr/local${NC}        (Intel)"
+        echo ""
+        exit 1
+    fi
+
+    info "检测到 Homebrew 安装在: ${BOLD}$prefix${NC}"
     echo ""
-    echo -e "  如果无法访问 GitHub，可使用国内镜像（Gitee）:"
-    echo -e "  ${CYAN}/bin/bash -c \"\$(curl -fsSL https://gitee.com/ineo6/homebrew-install/raw/master/uninstall.sh)\"${NC}"
+
+    # 列出已安装的软件包数量
+    local formula_count=0
+    local cask_count=0
+    formula_count=$("$prefix/bin/brew" list --formula 2>/dev/null | wc -l | tr -d ' ') || true
+    cask_count=$("$prefix/bin/brew" list --cask 2>/dev/null | wc -l | tr -d ' ') || true
+
+    if [[ "$formula_count" -gt 0 || "$cask_count" -gt 0 ]]; then
+        warn "当前已安装 ${BOLD}${formula_count}${NC}${YELLOW} 个 Formula、${BOLD}${cask_count}${NC}${YELLOW} 个 Cask。${NC}"
+    fi
+
+    echo ""
+    echo -e "${BOLD}${YELLOW}⚠️  此操作将执行以下步骤:${NC}"
+    echo -e "  1. 卸载所有已安装的 Cask 应用"
+    echo -e "  2. 卸载所有已安装的 Formula 软件包"
+    echo -e "  3. 删除 Homebrew 安装目录 ($prefix)"
+    echo -e "  4. 清理相关缓存目录"
+    echo -e "  5. 清理 Shell 配置文件中的 Homebrew 环境变量"
+    echo ""
+    echo -e "${BOLD}${RED}此操作不可逆！${NC}"
+    echo ""
+    echo -n -e "确认要卸载 Homebrew 吗？请输入 ${RED}yes${NC} 确认: "
+    read -r confirm
+
+    if [[ "$confirm" != "yes" ]]; then
+        info "已取消卸载。"
+        exit 0
+    fi
+
+    echo ""
+
+    # Step 1: 卸载所有 Cask
+    if [[ "$cask_count" -gt 0 ]]; then
+        info "正在卸载所有 Cask 应用..."
+        local cask_list
+        cask_list=$("$prefix/bin/brew" list --cask 2>/dev/null) || true
+        if [[ -n "$cask_list" ]]; then
+            echo "$cask_list" | while read -r cask; do
+                echo -e "  ${CYAN}卸载 Cask:${NC} $cask"
+                "$prefix/bin/brew" uninstall --cask --force "$cask" 2>/dev/null || true
+            done
+        fi
+        success "Cask 应用卸载完成。"
+    fi
+
+    # Step 2: 卸载所有 Formula
+    if [[ "$formula_count" -gt 0 ]]; then
+        info "正在卸载所有 Formula 软件包..."
+        local formula_list
+        formula_list=$("$prefix/bin/brew" list --formula 2>/dev/null) || true
+        if [[ -n "$formula_list" ]]; then
+            echo "$formula_list" | while read -r formula; do
+                echo -e "  ${CYAN}卸载 Formula:${NC} $formula"
+                "$prefix/bin/brew" uninstall --formula --force "$formula" 2>/dev/null || true
+            done
+        fi
+        success "Formula 软件包卸载完成。"
+    fi
+
+    # Step 3: 执行 brew cleanup
+    info "清理 Homebrew 缓存..."
+    "$prefix/bin/brew" cleanup --prune=all -s 2>/dev/null || true
+
+    # Step 4: 删除 Homebrew 相关目录
+    info "删除 Homebrew 安装目录..."
+
+    # 参考官方卸载脚本定义的目录列表
+    local homebrew_dirs=()
+
+    if [[ "$arch" == "arm64" ]]; then
+        # Apple Silicon: 整个 /opt/homebrew 都是 Homebrew 的
+        homebrew_dirs=(
+            "$prefix"
+        )
+    else
+        # Intel: /usr/local 下需要精确删除 Homebrew 相关子目录
+        homebrew_dirs=(
+            "$prefix/Homebrew"
+            "$prefix/Caskroom"
+            "$prefix/Cellar"
+            "$prefix/bin/brew"
+            "$prefix/share/doc/homebrew"
+            "$prefix/etc/bash_completion.d/brew"
+            "$prefix/lib/homebrew"
+            "$prefix/share/man/man1/brew.1"
+            "$prefix/share/zsh/site-functions/_brew"
+            "$prefix/var/homebrew"
+            "$prefix/opt"
+        )
+    fi
+
+    # 通用缓存目录
+    local cache_dirs=(
+        "$HOME/Library/Caches/Homebrew"
+        "$HOME/Library/Logs/Homebrew"
+    )
+
+    for dir in "${homebrew_dirs[@]}"; do
+        if [[ -e "$dir" ]]; then
+            echo -e "  ${RED}删除:${NC} $dir"
+            sudo rm -rf "$dir"
+        fi
+    done
+
+    for dir in "${cache_dirs[@]}"; do
+        if [[ -e "$dir" ]]; then
+            echo -e "  ${RED}删除缓存:${NC} $dir"
+            rm -rf "$dir"
+        fi
+    done
+
+    success "Homebrew 目录清理完成。"
+
+    # Step 5: 清理 Shell 配置文件中的 Homebrew 相关配置
+    info "清理 Shell 配置文件..."
+    local shell_profile
+    shell_profile="$(get_shell_profile)"
+
+    if [[ -f "$shell_profile" ]]; then
+        # 创建备份
+        cp "$shell_profile" "${shell_profile}.homebrew_uninstall_backup.$(date +%Y%m%d%H%M%S)"
+
+        local temp_file
+        temp_file="$(mktemp)"
+        awk '
+        /HOMEBREW_BREW_GIT_REMOTE|HOMEBREW_CORE_GIT_REMOTE|HOMEBREW_BOTTLE_DOMAIN|HOMEBREW_API_DOMAIN|HOMEBREW_CASK_GIT_REMOTE/ { next }
+        /brew shellenv/ { next }
+        /# Homebrew 镜像/ { next }
+        /# Homebrew 环境配置/ { next }
+        NF == 0 { blank++ }
+        NF > 0 { blank=0 }
+        blank <= 1 { print }
+        ' "$shell_profile" > "$temp_file" 2>/dev/null || true
+        mv "$temp_file" "$shell_profile"
+
+        success "已清理 $shell_profile 中的 Homebrew 相关配置。"
+    fi
+
+    echo ""
+    echo -e "${BOLD}${GREEN}============================================${NC}"
+    echo -e "${BOLD}${GREEN}       Homebrew 卸载完成！✅               ${NC}"
+    echo -e "${BOLD}${GREEN}============================================${NC}"
+    echo ""
+    echo -e "  ${BOLD}已清理的配置文件:${NC} $shell_profile"
+    echo -e "  ${BOLD}备份文件:${NC} ${shell_profile}.homebrew_uninstall_backup.*"
+    echo ""
+    echo -e "${YELLOW}请执行以下命令使配置生效:${NC}"
+    echo ""
+    echo -e "  ${CYAN}source $shell_profile${NC}"
+    echo ""
+    echo -e "或者直接重新打开终端即可。"
     echo ""
 }
 
@@ -446,7 +613,7 @@ main() {
 
     # 处理命令行参数
     if [[ "${1:-}" == "--uninstall" || "${1:-}" == "-u" ]]; then
-        show_uninstall_help
+        uninstall_homebrew "$arch"
         exit 0
     fi
 
