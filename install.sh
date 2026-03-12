@@ -93,6 +93,45 @@ get_homebrew_prefix() {
 }
 
 # ========== 前置检查 ==========
+
+# 检测 Xcode Command Line Tools 是否已安装
+check_xcode_clt() {
+    xcode-select -p &>/dev/null
+}
+
+# 等待 Xcode CLT 安装完成（轮询检测）
+wait_for_xcode_clt() {
+    local max_wait=600  # 最多等待 10 分钟
+    local elapsed=0
+    local interval=5
+
+    echo ""
+    echo -e "${BOLD}${YELLOW}╔══════════════════════════════════════════════════╗${NC}"
+    echo -e "${BOLD}${YELLOW}║  ⏳ 正在等待 Xcode Command Line Tools 安装...   ║${NC}"
+    echo -e "${BOLD}${YELLOW}║                                                  ║${NC}"
+    echo -e "${BOLD}${YELLOW}║  请在弹出的对话框中点击 "安装" 按钮，           ║${NC}"
+    echo -e "${BOLD}${YELLOW}║  安装完成后脚本将自动继续。                      ║${NC}"
+    echo -e "${BOLD}${YELLOW}║                                                  ║${NC}"
+    echo -e "${BOLD}${YELLOW}║  💡 如果没有看到弹窗，请手动运行:                ║${NC}"
+    echo -e "${BOLD}${YELLOW}║     xcode-select --install                       ║${NC}"
+    echo -e "${BOLD}${YELLOW}╚══════════════════════════════════════════════════╝${NC}"
+    echo ""
+
+    while ! check_xcode_clt; do
+        if [[ $elapsed -ge $max_wait ]]; then
+            echo ""
+            abort "等待超时（${max_wait}秒）。请手动安装 Xcode Command Line Tools 后重新运行本脚本:\n  xcode-select --install"
+        fi
+        printf "\r${BLUE}[信息]${NC} 等待安装中... 已等待 %d 秒 ⏳" "$elapsed"
+        sleep "$interval"
+        elapsed=$((elapsed + interval))
+    done
+
+    echo ""
+    success "Xcode Command Line Tools 安装完成！ ✅"
+    echo ""
+}
+
 preflight_check() {
     # 检查是否以 root 运行（不推荐）
     if [[ "$EUID" -eq 0 ]]; then
@@ -101,12 +140,20 @@ preflight_check() {
         read -r
     fi
 
-    # 检查 git（macOS 未安装时触发 Xcode Command Line Tools 安装）
-    if ! command_exists git; then
-        info "未检测到 git，将尝试安装 Xcode Command Line Tools..."
+    # 检查 Xcode Command Line Tools（macOS 上 git/curl 等都依赖它）
+    if ! check_xcode_clt; then
+        warn "未检测到 Xcode Command Line Tools，这是安装 Homebrew 的前置依赖。"
+        info "正在触发 Xcode Command Line Tools 安装..."
         xcode-select --install 2>/dev/null || true
-        info "请在弹出的对话框中点击\"安装\"，安装完成后重新运行本脚本。"
-        exit 0
+        # 等待安装完成，而不是退出脚本
+        wait_for_xcode_clt
+    else
+        success "Xcode Command Line Tools 已安装 ✅"
+    fi
+
+    # 检查 git
+    if ! command_exists git; then
+        abort "未检测到 git，请确认 Xcode Command Line Tools 已正确安装:\n  xcode-select --install"
     fi
 
     # 检查 curl
@@ -120,6 +167,9 @@ select_mirror() {
     echo ""
     echo -e "${BOLD}${CYAN}======================================${NC}"
     echo -e "${BOLD}${CYAN}   Homebrew 镜像源一键安装脚本   ${NC}"
+    echo -e "${BOLD}${CYAN}   作者: Mintimate${NC}"
+    echo -e "${BOLD}${CYAN}   博客: https://www.mintimate.cn${NC}"
+    echo -e "${BOLD}${CYAN}   GitHub: https://github.com/Mintimate${NC}"
     echo -e "${BOLD}${CYAN}======================================${NC}"
     echo ""
     echo -e "请选择镜像源:"
