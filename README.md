@@ -44,6 +44,8 @@ cd homebrew-cn
 
 运行脚本后，按提示操作即可：
 
+![启动脚本](assets/startShell.webp)
+
 ```
 ======================================
    Homebrew 镜像源一键安装脚本
@@ -58,6 +60,8 @@ cd homebrew-cn
 ```
 
 安装完成后，执行以下命令使配置生效：
+
+![安装完成](assets/finishedInstall.webp)
 
 ```zsh
 source ~/.zshrc
@@ -132,14 +136,19 @@ A: 脚本会自动触发安装，请在弹出的对话框中点击"安装"，安
 
 A: 运行以下命令：
 
-```zsh
-/bin/zsh -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
+```bash
+/bin/bash -c "$(curl -fsSL https://raw.githubusercontent.com/Homebrew/install/HEAD/uninstall.sh)"
 ```
 
-如果无法访问 GitHub，可使用清华镜像：
+如果无法运行，可以手动删除并移除环境变量内相关配置：
+```bash
+# Apple Silicon
+sudo rm -rf /opt/homebrew
 
-```zsh
-/bin/zsh -c "$(curl -fsSL https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/install/uninstall.sh)"
+# Intel (x86_64)
+sudo rm -rf /usr/local/Homebrew
+sudo rm -rf /usr/local/Caskroom
+sudo rm -rf /usr/local/bin/brew
 ```
 
 ## 🔗 参考链接
