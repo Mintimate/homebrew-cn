@@ -4,7 +4,7 @@
 
 ## ✨ 功能特性
 
-- 🪞 **镜像源可选** — 支持清华 TUNA、中科大 USTC、官方源三选一
+- 🪞 **镜像源可选** — 支持中科大 USTC、阿里云 Aliyun、清华 TUNA、官方源四选一
 - 🖥️ **macOS 全架构** — 兼容 Intel (x86_64) 和 Apple Silicon (M1/M2/M3/M4)
 - 🐚 **多 Shell 支持** — 自动适配 Zsh（默认）/ Bash，写入对应配置文件
 - 🔍 **智能检测** — 自动检测系统架构、前置依赖（git、curl 等）
@@ -62,19 +62,27 @@ cd homebrew-cn
 ```
 ======================================
    Homebrew 镜像源一键安装脚本
+   作者: Mintimate
+   博客: https://www.mintimate.cn
+   GitHub: https://github.com/Mintimate
 ======================================
 
 请选择镜像源:
-  1) 清华大学 TUNA  (https://mirrors.tuna.tsinghua.edu.cn)
-  2) 中国科学技术大学 USTC  (https://mirrors.ustc.edu.cn)
-  3) 官方源 (不使用镜像，需要良好的网络环境)
+  1) 中国科学技术大学 USTC  (https://mirrors.ustc.edu.cn)
+  2) 阿里云 Aliyun  (https://mirrors.aliyun.com/homebrew/)
+  3) 清华大学 TUNA  (https://mirrors.tuna.tsinghua.edu.cn)
+  4) 官方源 (不使用镜像，需要良好的网络环境)
 
-请输入选项 [1/2/3] (默认: 1):
+请输入选项 [1/2/3/4] (默认: 1):
 ```
+
+安装过程中，脚本会自动配置环境变量并下载 Homebrew：
+
+![安装过程](assets/processingShell.webp)
 
 安装完成后，执行以下命令使配置生效：
 
-![安装完成](assets/finishedInstall.webp)
+![安装完成](assets/finishedShell.webp)
 
 ```zsh
 source ~/.zshrc
@@ -91,8 +99,9 @@ brew doctor
 
 | 镜像源 | Git 仓库 | 二进制瓶 (Bottles) | API |
 |--------|----------|-------------------|-----|
-| **清华 TUNA** | `mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git` | `mirrors.tuna.tsinghua.edu.cn/homebrew-bottles` | `mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api` |
 | **USTC** | `mirrors.ustc.edu.cn/brew.git` | `mirrors.ustc.edu.cn/homebrew-bottles` | `mirrors.ustc.edu.cn/homebrew-bottles/api` |
+| **阿里云** | `mirrors.aliyun.com/homebrew/brew.git` | `mirrors.aliyun.com/homebrew/homebrew-bottles` | `mirrors.aliyun.com/homebrew/homebrew-bottles/api` |
+| **清华 TUNA** | `mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git` | `mirrors.tuna.tsinghua.edu.cn/homebrew-bottles` | `mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api` |
 
 脚本会自动配置以下环境变量：
 
