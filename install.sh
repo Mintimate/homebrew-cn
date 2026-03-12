@@ -249,17 +249,37 @@ install_homebrew() {
 
     # 使用 git clone 安装 Homebrew
     info "从 ${MIRROR_NAME} 克隆 Homebrew 仓库..."
-    if [[ -d "$prefix/.git" ]]; then
-        info "检测到已有的 git 仓库，更新中..."
-        git -C "$prefix" remote set-url origin "$BREW_GIT_REMOTE"
-        git -C "$prefix" fetch --force origin
-        git -C "$prefix" reset --hard origin/master
-    else
-        git clone --depth=1 "$BREW_GIT_REMOTE" "$prefix"
-    fi
+    
+    local max_retries=3
+    local retry_count=0
+    local clone_success=false
 
-    if [[ ! -f "$prefix/bin/brew" ]]; then
-        abort "Homebrew 安装失败，请检查网络连接或手动安装。"
+    while [[ $retry_count -lt $max_retries ]]; do
+        if [[ -d "$prefix/.git" ]]; then
+            info "检测到已有的 git 仓库，更新中... (尝试 $((retry_count+1))/$max_retries)"
+            git -C "$prefix" remote set-url origin "$BREW_GIT_REMOTE"
+            if git -C "$prefix" fetch --force origin; then
+                git -C "$prefix" reset --hard origin/master
+                clone_success=true
+                break
+            fi
+        else
+            info "正在克隆... (尝试 $((retry_count+1))/$max_retries)"
+            if git clone --depth=1 "$BREW_GIT_REMOTE" "$prefix"; then
+                clone_success=true
+                break
+            fi
+        fi
+        
+        retry_count=$((retry_count+1))
+        if [[ $retry_count -lt $max_retries ]]; then
+            warn "克隆失败，可能是镜像源服务器不稳定 (如 502 错误)。等待 3 秒后重试..."
+            sleep 3
+        fi
+    done
+
+    if [[ "$clone_success" != true || ! -f "$prefix/bin/brew" ]]; then
+        abort "Homebrew 安装失败！\n  已尝试 $max_retries 次均失败。\n  这通常是因为所选镜像源（如清华 TUNA）当前服务不稳定或正在同步中（返回 502/504 错误）。\n  建议：重新运行脚本并选择【中科大 USTC】镜像源，或稍后再试。"
     fi
 
     success "Homebrew 核心仓库克隆完成！"
