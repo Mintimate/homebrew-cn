@@ -175,23 +175,32 @@ select_mirror() {
     echo -e "${BOLD}${CYAN}======================================${NC}"
     echo ""
     echo -e "请选择镜像源:"
-    echo -e "  ${GREEN}1)${NC} 清华大学 TUNA  (${CYAN}https://mirrors.tuna.tsinghua.edu.cn${NC})"
-    echo -e "  ${GREEN}2)${NC} 中国科学技术大学 USTC  (${CYAN}https://mirrors.ustc.edu.cn${NC})"
-    echo -e "  ${GREEN}3)${NC} 官方源 (不使用镜像，需要良好的网络环境)"
+    echo -e "  ${GREEN}1)${NC} 中国科学技术大学 USTC  (${CYAN}https://mirrors.ustc.edu.cn${NC})"
+    echo -e "  ${GREEN}2)${NC} 阿里云 Aliyun  (${CYAN}https://mirrors.aliyun.com/homebrew/${NC})"
+    echo -e "  ${GREEN}3)${NC} 清华大学 TUNA  (${CYAN}https://mirrors.tuna.tsinghua.edu.cn${NC})"
+    echo -e "  ${GREEN}4)${NC} 官方源 (不使用镜像，需要良好的网络环境)"
     echo ""
-    echo -n -e "请输入选项 [${GREEN}1${NC}/${GREEN}2${NC}/${GREEN}3${NC}] (默认: 1): "
+    echo -n -e "请输入选项 [${GREEN}1${NC}/${GREEN}2${NC}/${GREEN}3${NC}/${GREEN}4${NC}] (默认: 1): "
     read -r mirror_choice
 
     case "$mirror_choice" in
         2)
-            MIRROR_NAME="USTC"
-            BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"
-            HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"
-            HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"
-            HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"
-            HOMEBREW_CASK_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-cask.git"
+            MIRROR_NAME="Aliyun"
+            BREW_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/brew.git"
+            HOMEBREW_CORE_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/homebrew-core.git"
+            HOMEBREW_BOTTLE_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bottles"
+            HOMEBREW_API_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bottles/api"
+            HOMEBREW_CASK_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/homebrew-cask.git"
             ;;
         3)
+            MIRROR_NAME="TUNA"
+            BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
+            HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
+            HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
+            HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
+            HOMEBREW_CASK_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-cask.git"
+            ;;
+        4)
             MIRROR_NAME="官方源"
             BREW_GIT_REMOTE="https://github.com/Homebrew/brew"
             HOMEBREW_CORE_GIT_REMOTE="https://github.com/Homebrew/homebrew-core"
@@ -200,12 +209,12 @@ select_mirror() {
             HOMEBREW_CASK_GIT_REMOTE=""
             ;;
         *)
-            MIRROR_NAME="TUNA"
-            BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
-            HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
-            HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
-            HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
-            HOMEBREW_CASK_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-cask.git"
+            MIRROR_NAME="USTC"
+            BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"
+            HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"
+            HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"
+            HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"
+            HOMEBREW_CASK_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-cask.git"
             ;;
     esac
 
