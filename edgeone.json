@@ -1,0 +1,9 @@
+{
+  "redirects": [
+    {
+      "source": "/install.sh",
+      "destination": "/install",
+      "statusCode": 301
+    }
+  ]
+}
