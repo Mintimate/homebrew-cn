@@ -17,13 +17,13 @@
 ### 方式一：在线一键安装（推荐）
 
 ```zsh
-/bin/zsh -c "$(curl -fsSL https://cnb.cool/Mintimate/tool-forge/homebrew-cn/-/git/raw/main/install.sh)"
+/bin/zsh -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)"
 ```
 
 如果无法访问 GitHub，也可以先将脚本下载到本地后运行：
 
 ```zsh
-curl -fsSL -o install.sh https://cnb.cool/Mintimate/tool-forge/homebrew-cn/-/git/raw/main/install.sh
+curl -fsSL -o install.sh https://brew-cn.mintimate.cn/install
 /bin/zsh install.sh
 ```
 
@@ -42,7 +42,7 @@ cd homebrew-cn
 在线执行：
 
 ```zsh
-/bin/zsh -c "$(curl -fsSL https://cnb.cool/Mintimate/tool-forge/homebrew-cn/-/git/raw/main/install.sh)" -- --uninstall
+/bin/zsh -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)" -- --uninstall
 ```
 
 本地执行：
@@ -159,7 +159,7 @@ A: 脚本会自动触发安装，请在弹出的对话框中点击"安装"，安
 A: 使用脚本自带的卸载功能（推荐）：
 
 ```zsh
-/bin/zsh -c "$(curl -fsSL https://cnb.cool/Mintimate/tool-forge/homebrew-cn/-/git/raw/main/install.sh)" -- --uninstall
+/bin/zsh -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)" -- --uninstall
 ```
 
 也可以使用官方卸载脚本：
