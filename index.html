@@ -6,7 +6,7 @@
     <title>Homebrew CN 镜像一键安装 — 国内极速安装 Homebrew</title>
     <meta name="description" content="专为国内用户优化的 Homebrew 一键安装脚本，支持中科大 USTC、阿里云、清华 TUNA 镜像源，告别龟速下载。">
     <meta name="keywords" content="Homebrew,安装,镜像,国内,macOS,brew,USTC,TUNA,阿里云">
-    <link rel="icon" href="/assets/favicon.ico" type="image/x-icon">
+    <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <style>
         :root {
             --accent: #ff8c42;
@@ -100,6 +100,7 @@
         .step-desc { font-size: .95rem; color: var(--text-muted); }
 
         .faq-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(300px,1fr)); gap: 24px; }
+        @media (min-width: 1024px) { .faq-grid { grid-template-columns: repeat(2,1fr); } }
         .faq-item { background: rgba(255,255,255,.65); border: 1px solid rgba(255,184,77,.2); border-radius: 12px; padding: 20px; }
         .faq-q { font-weight: 700; color: #3d2f1d; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
         .faq-q::before { content: 'Q'; display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 28px; background: rgba(233,69,96,.15); color: var(--accent-light); border-radius: 8px; font-size: .85rem; font-weight: 800; }
@@ -151,7 +152,7 @@
                 </div>
                 <p class="command-hint">自动适配 macOS (Intel/Apple Silicon) · 脚本运行后可交互选择镜像源</p>
                 <div class="support-links">
-                    <a href="https://afdian.com/a/mintimate" target="_blank" class="link-afdian">❤ 觉得好用？去爱发电支持一下</a>
+                    <a href="https://ifdian.net/a/mintimate" target="_blank" class="link-afdian">❤ 觉得好用？去爱发电支持一下</a>
                     <a href="https://space.bilibili.com/355567627" target="_blank" class="link-bilibili">📺 助力 Mintimate 突破 1w 粉丝！</a>
                 </div>
             </div>
