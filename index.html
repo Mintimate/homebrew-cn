@@ -5,15 +5,12 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>Homebrew CN 镜像一键安装 — 国内极速安装 Homebrew</title>
     <meta name="description" content="专为国内用户优化的 Homebrew 一键安装脚本，支持中科大 USTC、阿里云、清华 TUNA 镜像源，告别龟速下载。">
-    <meta name="keywords" content="Homebrew, 安装, 镜像, 国内, macOS, brew, USTC, TUNA, 阿里云">
-    <link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><rect width='100' height='100' rx='20' fill='%23ffb347'/><text x='50' y='62' font-size='40' text-anchor='middle' fill='%23362d1f' font-family='Arial'>HB</text></svg>">
+    <meta name="keywords" content="Homebrew,安装,镜像,国内,macOS,brew,USTC,TUNA,阿里云">
+    <link rel="icon" href="/assets/favicon.ico" type="image/x-icon">
     <style>
         :root {
-            --primary: #fff5e6;
             --accent: #ff8c42;
             --accent-light: #ffb347;
-            --blue: #5aa9e6;
-            --blue-light: #dff1ff;
             --green: #2e9f62;
             --gold: #f4b400;
             --bg: #fffaf0;
@@ -26,574 +23,104 @@
         }
 
         * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif; line-height: 1.7; color: var(--text); background: var(--bg); overflow-x: hidden; }
+        body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%; height: 200%; background: radial-gradient(ellipse at 20% 50%, rgba(255,179,71,.18) 0%, transparent 50%), radial-gradient(ellipse at 80% 20%, rgba(90,169,230,.16) 0%, transparent 50%), radial-gradient(ellipse at 50% 80%, rgba(244,180,0,.14) 0%, transparent 50%); z-index: -1; animation: bgFloat 20s ease-in-out infinite; }
+        @keyframes bgFloat { 0%,100%{transform:translate(0,0) rotate(0deg)} 33%{transform:translate(2%,-2%) rotate(1deg)} 66%{transform:translate(-1%,1%) rotate(-1deg)} }
+        .container { max-width: 1200px; margin: 0 auto; padding: 0 24px; }
 
-        body {
-            font-family: -apple-system, BlinkMacSystemFont, "SF Pro Display", "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif;
-            line-height: 1.7;
-            color: var(--text);
-            background: var(--bg);
-            overflow-x: hidden;
-        }
+        .hero { text-align: center; padding: 100px 0 60px; position: relative; opacity: 0; transform: translateY(20px); animation: fadeInUp .8s ease-out forwards; }
+        .hero-badge { display: inline-flex; align-items: center; gap: 8px; background: rgba(255,179,71,.25); border: 1px solid rgba(255,179,71,.4); padding: 6px 16px; border-radius: 100px; font-size: .85rem; color: #8a4b08; margin-bottom: 24px; }
+        .hero-badge .dot { width: 8px; height: 8px; background: var(--accent); border-radius: 50%; animation: pulse 2s ease-in-out infinite; }
+        @keyframes pulse { 0%,100%{opacity:1;transform:scale(1)} 50%{opacity:.5;transform:scale(.8)} }
+        h1 { font-size: clamp(2.5rem,6vw,4rem); font-weight: 800; letter-spacing: -.02em; background: linear-gradient(135deg,#8a4b08 0%,#ff8c42 55%,#f4b400 100%); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; margin-bottom: 20px; }
+        .hero-desc { font-size: 1.2rem; color: var(--text-muted); max-width: 700px; margin: 0 auto; }
 
-        /* 背景装饰 */
-        body::before {
-            content: '';
-            position: fixed;
-            top: -50%;
-            left: -50%;
-            width: 200%;
-            height: 200%;
-            background: radial-gradient(ellipse at 20% 50%, rgba(255, 179, 71, 0.18) 0%, transparent 50%),
-                        radial-gradient(ellipse at 80% 20%, rgba(90, 169, 230, 0.16) 0%, transparent 50%),
-                        radial-gradient(ellipse at 50% 80%, rgba(244, 180, 0, 0.14) 0%, transparent 50%);
-            z-index: -1;
-            animation: bgFloat 20s ease-in-out infinite;
-        }
+        .grid-2-1, .grid-1-1 { display: grid; gap: 24px; margin-bottom: 40px; }
+        .grid-2-1 { grid-template-columns: 2fr 1fr; }
+        .grid-1-1 { grid-template-columns: 1fr 1fr; }
+        .section { margin-bottom: 40px; }
 
-        @keyframes bgFloat {
-            0%, 100% { transform: translate(0, 0) rotate(0deg); }
-            33% { transform: translate(2%, -2%) rotate(1deg); }
-            66% { transform: translate(-1%, 1%) rotate(-1deg); }
-        }
+        .card { background: var(--card-bg); border: 1px solid var(--card-border); border-radius: var(--radius); padding: 32px; height: 100%; backdrop-filter: blur(10px); transition: transform .3s, border-color .3s, box-shadow .3s; display: flex; flex-direction: column; }
+        .card:hover { border-color: rgba(255,140,66,.35); box-shadow: 0 8px 40px rgba(255,179,71,.22); transform: translateY(-2px); }
+        .card-title { font-size: 1.35rem; font-weight: 700; color: #3d2f1d; margin-bottom: 20px; display: flex; align-items: center; gap: 10px; }
 
-        .container {
-            max-width: 1200px; /* 增加宽度 */
-            margin: 0 auto;
-            padding: 0 24px;
-        }
+        .command-wrapper { margin: 16px 0; flex-grow: 1; display: flex; flex-direction: column; justify-content: center; gap: 10px; }
+        .command-box { background: var(--code-bg); border: 1px solid rgba(255,184,77,.35); color: #8a4b08; padding: 16px 18px; border-radius: 12px; font-family: "SF Mono","Fira Code","JetBrains Mono",Consolas,monospace; font-size: 15px; overflow-x: auto; white-space: nowrap; line-height: 1.6; box-shadow: inset 0 1px 3px rgba(138,75,8,.08); }
+        .command-box .prompt { color: var(--green); user-select: none; margin-right: 8px; }
+        .copy-btn { background: rgba(255,255,255,.75); color: #6d5a44; border: 1px solid rgba(255,184,77,.45); border-radius: 8px; padding: 8px 14px; cursor: pointer; font-size: .85rem; font-weight: 600; transition: all .2s; font-family: inherit; align-self: flex-end; }
+        .copy-btn:hover { background: rgba(255,179,71,.22); border-color: var(--accent); color: #51391c; }
+        .copy-btn.copied { background: rgba(39,174,96,.2); border-color: var(--green); color: var(--green); }
+        .command-hint { font-size: .9rem; color: var(--text-muted); margin-top: 12px; }
+        .muted { color: var(--text-muted); }
+        .muted-sm { color: var(--text-muted); font-size: .92rem; }
+        .support-links { margin-top: 12px; display: flex; gap: 10px; flex-wrap: wrap; }
+        .support-links a { display: inline-flex; align-items: center; gap: 6px; padding: 6px 12px; border-radius: 8px; text-decoration: none; font-size: .9rem; font-weight: 600; transition: all .2s; }
+        .link-afdian { color: #d35400; background: rgba(255,179,71,.2); border: 1px solid rgba(255,179,71,.4); }
+        .link-afdian:hover { background: rgba(255,179,71,.3); }
+        .link-bilibili { color: #fb7299; background: rgba(251,114,153,.15); border: 1px solid rgba(251,114,153,.3); }
+        .link-bilibili:hover { background: rgba(251,114,153,.25); }
+        .td-name { color: #3d2f1d; font-weight: 700; }
+        .sub-title { font-size: 1.1rem; margin-bottom: 12px; }
+        .footer-sub { margin-top: 8px; font-size: .8rem; opacity: .6; }
 
-        /* Hero 区域 */
-        .hero {
-            text-align: center;
-            padding: 100px 0 60px;
-            position: relative;
-            opacity: 0;
-            transform: translateY(20px);
-            animation: fadeInUp 0.8s ease-out forwards;
-        }
+        .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; height: 100%; align-items: center; }
+        .stat-card { background: rgba(255,255,255,.65); border: 1px solid rgba(255,184,77,.22); border-radius: 12px; padding: 24px; text-align: center; transition: all .3s; height: 100%; display: flex; flex-direction: column; justify-content: center; }
+        .stat-card:hover { background: rgba(255,179,71,.18); border-color: rgba(255,140,66,.32); }
+        .stat-value { font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg,var(--accent-light),var(--gold)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; display: block; margin-bottom: 8px; line-height: 1.1; }
+        .stat-label { font-size: .9rem; color: var(--text-muted); }
 
-        .hero-badge {
-            display: inline-flex;
-            align-items: center;
-            gap: 8px;
-            background: rgba(255, 179, 71, 0.25);
-            border: 1px solid rgba(255, 179, 71, 0.4);
-            padding: 6px 16px;
-            border-radius: 100px;
-            font-size: 0.85rem;
-            color: #8a4b08;
-            margin-bottom: 24px;
-        }
+        .features-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 20px; }
+        .feature-item { padding: 24px; background: rgba(255,255,255,.65); border: 1px solid rgba(255,184,77,.2); border-radius: 12px; transition: all .3s; }
+        .feature-item:hover { background: rgba(255,244,220,.95); border-color: rgba(255,184,77,.42); transform: translateY(-4px); }
+        .feature-title { font-weight: 700; color: #3d2f1d; margin-bottom: 8px; display: block; font-size: 1.1rem; }
+        .feature-desc { font-size: .9rem; color: var(--text-muted); line-height: 1.6; }
 
-        .hero-badge .dot {
-            width: 8px;
-            height: 8px;
-            background: var(--accent);
-            border-radius: 50%;
-            animation: pulse 2s ease-in-out infinite;
-        }
-
-        @keyframes pulse {
-            0%, 100% { opacity: 1; transform: scale(1); }
-            50% { opacity: 0.5; transform: scale(0.8); }
-        }
-
-        h1 {
-            font-size: clamp(2.5rem, 6vw, 4rem);
-            font-weight: 800;
-            letter-spacing: -0.02em;
-            background: linear-gradient(135deg, #8a4b08 0%, #ff8c42 55%, #f4b400 100%);
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            margin-bottom: 20px;
-        }
-
-        .hero-desc {
-            font-size: 1.2rem;
-            color: var(--text-muted);
-            max-width: 700px;
-            margin: 0 auto;
-        }
-
-        /* Grid 布局系统 */
-        .grid-layout {
-            display: grid;
-            grid-template-columns: repeat(12, 1fr);
-            gap: 24px;
-            margin-bottom: 40px;
-        }
-
-        .col-span-12 { grid-column: span 12; }
-        .col-span-8 { grid-column: span 8; }
-        .col-span-6 { grid-column: span 6; }
-        .col-span-4 { grid-column: span 4; }
-
-        /* 卡片 */
-        .card {
-            background: var(--card-bg);
-            border: 1px solid var(--card-border);
-            border-radius: var(--radius);
-            padding: 32px;
-            height: 100%; /* 撑满高度 */
-            backdrop-filter: blur(10px);
-            transition: transform 0.3s, border-color 0.3s, box-shadow 0.3s;
-            display: flex;
-            flex-direction: column;
-        }
-
-        .card:hover {
-            border-color: rgba(255, 140, 66, 0.35);
-            box-shadow: 0 8px 40px rgba(255, 179, 71, 0.22);
-            transform: translateY(-2px);
-        }
-
-        .card-title {
-            font-size: 1.35rem;
-            font-weight: 700;
-            color: #3d2f1d;
-            margin-bottom: 20px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .card-title .icon {
-            font-size: 1.4rem;
-        }
-
-        /* 命令框 */
-        .command-wrapper {
-            margin: 16px 0;
-            flex-grow: 1;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-            gap: 10px;
-        }
-
-        .command-box {
-            background: var(--code-bg);
-            border: 1px solid rgba(255, 184, 77, 0.35);
-            color: #8a4b08;
-            padding: 16px 18px;
-            border-radius: 12px;
-            font-family: "SF Mono", "Fira Code", "JetBrains Mono", Consolas, monospace;
-            font-size: 15px;
-            overflow-x: auto;
-            white-space: nowrap;
-            line-height: 1.6;
-            box-shadow: inset 0 1px 3px rgba(138, 75, 8, 0.08);
-        }
-
-        .command-box .prompt {
-            color: var(--green);
-            user-select: none;
-            margin-right: 8px;
-        }
-
-        .copy-btn {
-            background: rgba(255, 255, 255, 0.75);
-            color: #6d5a44;
-            border: 1px solid rgba(255, 184, 77, 0.45);
-            border-radius: 8px;
-            padding: 8px 14px;
-            cursor: pointer;
-            font-size: 0.85rem;
-            font-weight: 600;
-            transition: all 0.2s;
-            font-family: inherit;
-            align-self: flex-end;
-        }
-
-        .copy-btn:hover {
-            background: rgba(255, 179, 71, 0.22);
-            border-color: var(--accent);
-            color: #51391c;
-        }
-
-        .copy-btn.copied {
-            background: rgba(39, 174, 96, 0.2);
-            border-color: var(--green);
-            color: var(--green);
-        }
-
-        .command-hint {
-            font-size: 0.9rem;
-            color: var(--text-muted);
-            margin-top: 12px;
-        }
-
-        /* 统计 */
-        .stats-grid {
-            display: grid;
-            grid-template-columns: 1fr 1fr;
-            gap: 20px;
-            height: 100%;
-            align-items: center;
-        }
-
-        .stat-card {
-            background: rgba(255, 255, 255, 0.65);
-            border: 1px solid rgba(255, 184, 77, 0.22);
-            border-radius: 12px;
-            padding: 24px;
-            text-align: center;
-            transition: all 0.3s;
-            height: 100%;
-            display: flex;
-            flex-direction: column;
-            justify-content: center;
-        }
-
-        .stat-card:hover {
-            background: rgba(255, 179, 71, 0.18);
-            border-color: rgba(255, 140, 66, 0.32);
-        }
-
-        .stat-value {
-            font-size: 2.5rem;
-            font-weight: 800;
-            background: linear-gradient(135deg, var(--accent-light), var(--gold));
-            -webkit-background-clip: text;
-            background-clip: text;
-            -webkit-text-fill-color: transparent;
-            display: block;
-            margin-bottom: 8px;
-            line-height: 1.1;
-        }
-
-        .stat-label {
-            font-size: 0.9rem;
-            color: var(--text-muted);
-        }
-
-        /* 功能网格 */
-        .features-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(220px, 1fr));
-            gap: 20px;
-        }
-
-        .feature-item {
-            padding: 24px;
-            background: rgba(255, 255, 255, 0.65);
-            border: 1px solid rgba(255, 184, 77, 0.2);
-            border-radius: 12px;
-            transition: all 0.3s;
-        }
-
-        .feature-item:hover {
-            background: rgba(255, 244, 220, 0.95);
-            border-color: rgba(255, 184, 77, 0.42);
-            transform: translateY(-4px);
-        }
-
-        .feature-icon {
-            display: none;
-        }
-
-        .feature-title {
-            font-weight: 700;
-            color: #3d2f1d;
-            margin-bottom: 8px;
-            display: block;
-            font-size: 1.1rem;
-        }
-
-        .feature-desc {
-            font-size: 0.9rem;
-            color: var(--text-muted);
-            line-height: 1.6;
-        }
-
-        /* 表格 */
-        .table-wrap {
-            overflow-x: auto;
-            margin: 16px 0;
-        }
-
-        table {
-            width: 100%;
-            border-collapse: collapse;
-            font-size: 0.95rem;
-        }
-
-        th {
-            text-align: left;
-            padding: 16px;
-            background: rgba(255, 184, 77, 0.2);
-            color: #3d2f1d;
-            font-weight: 600;
-            white-space: nowrap;
-        }
-
-        td {
-            padding: 16px;
-            border-top: 1px solid rgba(255, 184, 77, 0.22);
-            color: var(--text-muted);
-        }
-
-        tr:hover td {
-            background: rgba(255, 248, 232, 0.9);
-        }
-
+        .table-wrap { overflow-x: auto; margin: 16px 0; }
+        table { width: 100%; border-collapse: collapse; font-size: .95rem; }
+        th { text-align: left; padding: 16px; background: rgba(255,184,77,.2); color: #3d2f1d; font-weight: 600; white-space: nowrap; }
+        td { padding: 16px; border-top: 1px solid rgba(255,184,77,.22); color: var(--text-muted); }
+        tr:hover td { background: rgba(255,248,232,.9); }
         th:first-child { border-radius: 8px 0 0 8px; }
         th:last-child { border-radius: 0 8px 8px 0; }
+        .mirror-tag { display: inline-block; padding: 4px 12px; border-radius: 100px; font-size: .75rem; font-weight: 600; }
+        .tag-recommend { background: rgba(39,174,96,.15); color: var(--green); border: 1px solid rgba(39,174,96,.3); }
+        .tag-fast { background: rgba(52,152,219,.15); color: #3498db; border: 1px solid rgba(52,152,219,.3); }
+        .tag-edu { background: rgba(243,156,18,.15); color: var(--gold); border: 1px solid rgba(243,156,18,.3); }
 
-        .mirror-tag {
-            display: inline-block;
-            padding: 4px 12px;
-            border-radius: 100px;
-            font-size: 0.75rem;
-            font-weight: 600;
-        }
+        .path-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin: 16px 0; }
+        .path-item { background: rgba(255,255,255,.65); border: 1px solid rgba(255,184,77,.22); border-radius: 12px; padding: 20px; display: flex; align-items: center; justify-content: space-between; }
+        .path-item .arch { font-weight: 700; color: #3d2f1d; font-size: 1.1rem; }
+        .path-item .path { font-family: "SF Mono",Consolas,monospace; color: var(--accent-light); font-size: 1rem; background: rgba(0,0,0,.2); padding: 4px 8px; border-radius: 6px; }
+        .path-item .note { font-size: .85rem; color: var(--text-muted); }
 
-        .tag-recommend {
-            background: rgba(39, 174, 96, 0.15);
-            color: var(--green);
-            border: 1px solid rgba(39, 174, 96, 0.3);
-        }
+        .steps { counter-reset: step; display: grid; gap: 24px; }
+        .step { position: relative; padding-left: 60px; }
+        .step::before { counter-increment: step; content: counter(step); position: absolute; left: 0; top: 0; width: 40px; height: 40px; background: linear-gradient(135deg,var(--accent),var(--gold)); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 700; font-size: 1.1rem; box-shadow: 0 4px 10px rgba(255,140,66,.25); }
+        .step-title { font-weight: 700; color: #3d2f1d; margin-bottom: 6px; font-size: 1.1rem; }
+        .step-desc { font-size: .95rem; color: var(--text-muted); }
 
-        .tag-fast {
-            background: rgba(52, 152, 219, 0.15);
-            color: #3498db;
-            border: 1px solid rgba(52, 152, 219, 0.3);
-        }
+        .faq-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(300px,1fr)); gap: 24px; }
+        .faq-item { background: rgba(255,255,255,.65); border: 1px solid rgba(255,184,77,.2); border-radius: 12px; padding: 20px; }
+        .faq-q { font-weight: 700; color: #3d2f1d; margin-bottom: 12px; display: flex; align-items: center; gap: 10px; }
+        .faq-q::before { content: 'Q'; display: inline-flex; align-items: center; justify-content: center; min-width: 28px; height: 28px; background: rgba(233,69,96,.15); color: var(--accent-light); border-radius: 8px; font-size: .85rem; font-weight: 800; }
+        .faq-a { color: var(--text-muted); font-size: .95rem; line-height: 1.6; }
+        .faq-a code { background: rgba(255,255,255,.06); padding: 2px 6px; border-radius: 4px; font-family: "SF Mono",Consolas,monospace; font-size: .85rem; color: var(--accent-light); }
 
-        .tag-edu {
-            background: rgba(243, 156, 18, 0.15);
-            color: var(--gold);
-            border: 1px solid rgba(243, 156, 18, 0.3);
-        }
+        .env-list { list-style: none; margin: 0; padding: 0; display: grid; grid-template-columns: repeat(auto-fit,minmax(300px,1fr)); gap: 12px; }
+        .env-list li { padding: 12px; background: var(--code-bg); border-radius: 8px; border: 1px solid rgba(255,184,77,.25); font-family: "SF Mono",Consolas,monospace; font-size: .85rem; color: var(--text-muted); display: flex; justify-content: space-between; align-items: center; }
+        .env-list .env-key { color: #e5c07b; font-weight: 600; }
+        .env-list .env-comment { color: #5c6370; font-style: italic; font-size: .8rem; }
 
-        /* 安装路径 */
-        .path-grid {
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 16px;
-            margin: 16px 0;
-        }
+        .footer { text-align: center; padding: 60px 0 40px; color: var(--text-muted); font-size: .9rem; border-top: 1px solid rgba(255,184,77,.25); margin-top: 40px; }
+        .footer-links { display: flex; justify-content: center; gap: 32px; margin-bottom: 20px; }
+        .footer-links a { color: var(--text-muted); text-decoration: none; transition: color .2s; font-weight: 500; }
+        .footer-links a:hover { color: var(--accent-light); }
 
-        .path-item {
-            background: rgba(255, 255, 255, 0.65);
-            border: 1px solid rgba(255, 184, 77, 0.22);
-            border-radius: 12px;
-            padding: 20px;
-            display: flex;
-            align-items: center;
-            justify-content: space-between;
-        }
-
-        .path-item .arch {
-            font-weight: 700;
-            color: #3d2f1d;
-            font-size: 1.1rem;
-        }
-
-        .path-item .path {
-            font-family: "SF Mono", Consolas, monospace;
-            color: var(--accent-light);
-            font-size: 1rem;
-            background: rgba(0,0,0,0.2);
-            padding: 4px 8px;
-            border-radius: 6px;
-        }
-
-        .path-item .note {
-            font-size: 0.85rem;
-            color: var(--text-muted);
-        }
-
-        /* 步骤 */
-        .steps {
-            counter-reset: step;
-            display: grid;
-            grid-template-columns: 1fr;
-            gap: 24px;
-        }
-
-        .step {
-            position: relative;
-            padding-left: 60px;
-        }
-
-        .step::before {
-            counter-increment: step;
-            content: counter(step);
-            position: absolute;
-            left: 0;
-            top: 0;
-            width: 40px;
-            height: 40px;
-            background: linear-gradient(135deg, var(--accent), var(--gold));
-            color: #fff;
-            border-radius: 50%;
-            display: flex;
-            align-items: center;
-            justify-content: center;
-            font-weight: 700;
-            font-size: 1.1rem;
-            box-shadow: 0 4px 10px rgba(255, 140, 66, 0.25);
-        }
-
-        .step-title {
-            font-weight: 700;
-            color: #3d2f1d;
-            margin-bottom: 6px;
-            font-size: 1.1rem;
-        }
-
-        .step-desc {
-            font-size: 0.95rem;
-            color: var(--text-muted);
-        }
-
-        /* FAQ */
-        .faq-grid {
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 24px;
-        }
-
-        .faq-item {
-            background: rgba(255, 255, 255, 0.65);
-            border: 1px solid rgba(255, 184, 77, 0.2);
-            border-radius: 12px;
-            padding: 20px;
-        }
-
-        .faq-q {
-            font-weight: 700;
-            color: #3d2f1d;
-            margin-bottom: 12px;
-            display: flex;
-            align-items: center;
-            gap: 10px;
-        }
-
-        .faq-q::before {
-            content: 'Q';
-            display: inline-flex;
-            align-items: center;
-            justify-content: center;
-            min-width: 28px;
-            height: 28px;
-            background: rgba(233, 69, 96, 0.15);
-            color: var(--accent-light);
-            border-radius: 8px;
-            font-size: 0.85rem;
-            font-weight: 800;
-        }
-
-        .faq-a {
-            color: var(--text-muted);
-            font-size: 0.95rem;
-            line-height: 1.6;
-        }
-
-        .faq-a code {
-            background: rgba(255, 255, 255, 0.06);
-            padding: 2px 6px;
-            border-radius: 4px;
-            font-family: "SF Mono", Consolas, monospace;
-            font-size: 0.85rem;
-            color: var(--accent-light);
-        }
-
-        /* 环境变量 */
-        .env-list {
-            list-style: none;
-            margin: 0;
-            padding: 0;
-            display: grid;
-            grid-template-columns: repeat(auto-fit, minmax(300px, 1fr));
-            gap: 12px;
-        }
-
-        .env-list li {
-            padding: 12px;
-            background: var(--code-bg);
-            border-radius: 8px;
-            border: 1px solid rgba(255, 184, 77, 0.25);
-            font-family: "SF Mono", Consolas, monospace;
-            font-size: 0.85rem;
-            color: var(--text-muted);
-            display: flex;
-            justify-content: space-between;
-            align-items: center;
-        }
-
-        .env-list li .env-key {
-            color: #e5c07b;
-            font-weight: 600;
-        }
-
-        .env-list li .env-comment {
-            color: #5c6370;
-            font-style: italic;
-            font-size: 0.8rem;
-        }
-
-        /* Footer */
-        .footer {
-            text-align: center;
-            padding: 60px 0 40px;
-            color: var(--text-muted);
-            font-size: 0.9rem;
-            border-top: 1px solid rgba(255, 184, 77, 0.25);
-            margin-top: 40px;
-        }
-
-        .footer-links {
-            display: flex;
-            justify-content: center;
-            gap: 32px;
-            margin-bottom: 20px;
-        }
-
-        .footer-links a {
-            color: var(--text-muted);
-            text-decoration: none;
-            transition: color 0.2s;
-            font-weight: 500;
-        }
-
-        .footer-links a:hover {
-            color: var(--accent-light);
-        }
-
-        /* 动画类 */
-        .reveal {
-            opacity: 0;
-            transform: translateY(30px);
-            transition: all 0.8s ease-out;
-        }
-
-        .reveal.active {
-            opacity: 1;
-            transform: translateY(0);
-        }
-
-        @keyframes fadeInUp {
-            from { opacity: 0; transform: translateY(20px); }
-            to { opacity: 1; transform: translateY(0); }
-        }
-
-        /* 响应式调整 */
-        @media (max-width: 1024px) {
-            .col-span-8, .col-span-6, .col-span-4 { grid-column: span 12; }
-            .stats-grid { grid-template-columns: 1fr 1fr; }
-        }
-
-        @media (max-width: 768px) {
-            .hero { padding: 60px 0 40px; }
-            .card { padding: 24px; }
-            .stats-grid { grid-template-columns: 1fr; }
-            .path-item { flex-direction: column; align-items: flex-start; gap: 8px; }
-            .command-box { white-space: pre-wrap; word-break: break-all; }
-            .copy-btn { width: 100%; text-align: center; align-self: stretch; }
-        }
+        .reveal { opacity: 0; transform: translateY(30px); transition: all .8s ease-out; }
+        .reveal.active { opacity: 1; transform: translateY(0); }
+        @keyframes fadeInUp { from{opacity:0;transform:translateY(20px)} to{opacity:1;transform:translateY(0)} }
+        @media (max-width:1024px) { .grid-2-1,.grid-1-1{grid-template-columns:1fr} .stats-grid{grid-template-columns:1fr 1fr} }
+        @media (max-width:768px) { .hero{padding:60px 0 40px} .card{padding:24px} .stats-grid{grid-template-columns:1fr} .path-item{flex-direction:column;align-items:flex-start;gap:8px} .command-box{white-space:pre-wrap;word-break:break-all} .copy-btn{width:100%;text-align:center;align-self:stretch} }
     </style>
 </head>
 <body>
@@ -608,333 +135,143 @@
             <p class="hero-desc">专为国内用户打造的 Homebrew 一键安装脚本，智能选择最佳镜像源，解决下载慢、安装失败等问题。</p>
         </div>
 
-        <!-- 第一行：安装命令 + 统计 -->
-        <div class="grid-layout">
-            <div class="col-span-8 reveal">
-                <div class="card">
-                    <div class="card-title">立即开始</div>
-                    <p style="color: var(--text-muted); margin-bottom: 8px;">复制以下命令到终端（Terminal）运行：</p>
-
-                    <p style="color: var(--text-muted); margin-bottom: 4px; font-size: 0.92rem;">安装命令</p>
-                    <div class="command-wrapper">
-                        <div class="command-box">
-                            <span class="prompt">$</span><span id="install-command">/bin/zsh -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)"</span>
-                        </div>
-                        <button class="copy-btn" onclick="copyCommand('install-command', this)">复制安装命令</button>
-                    </div>
-
-                    <p style="color: var(--text-muted); margin: 8px 0 4px; font-size: 0.92rem;">卸载命令</p>
-                    <div class="command-wrapper">
-                        <div class="command-box">
-                            <span class="prompt">$</span><span id="uninstall-command">/bin/zsh -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)" -- --uninstall</span>
-                        </div>
-                        <button class="copy-btn" onclick="copyCommand('uninstall-command', this)">复制卸载命令</button>
-                    </div>
-
-                    <p class="command-hint">自动适配 macOS (Intel/Apple Silicon) · 脚本运行后可交互选择镜像源</p>
-                    <div style="margin-top: 12px;">
-                        <a href="https://afdian.com/a/mintimate" target="_blank" style="display: inline-flex; align-items: center; gap: 6px; color: #d35400; background: rgba(255, 179, 71, 0.2); border: 1px solid rgba(255, 179, 71, 0.4); padding: 6px 12px; border-radius: 8px; text-decoration: none; font-size: 0.9rem; font-weight: 600; transition: all 0.2s;" onmouseover="this.style.background='rgba(255, 179, 71, 0.3)'" onmouseout="this.style.background='rgba(255, 179, 71, 0.2)'">
-                            <span>❤</span> 觉得好用？去爱发电支持一下
-                        </a>
-                    </div>
+        <div class="grid-2-1">
+            <div class="card reveal">
+                <div class="card-title">立即开始</div>
+                <p class="muted" style="margin-bottom:8px">复制以下命令到终端（Terminal）运行：</p>
+                <p class="muted-sm">安装命令</p>
+                <div class="command-wrapper">
+                    <div class="command-box"><span class="prompt">$</span><span id="install-command">/bin/zsh -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)"</span></div>
+                    <button class="copy-btn" onclick="copyCommand('install-command',this)">复制安装命令</button>
+                </div>
+                <p class="muted-sm" style="margin-top:8px">卸载命令</p>
+                <div class="command-wrapper">
+                    <div class="command-box"><span class="prompt">$</span><span id="uninstall-command">/bin/zsh -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)" -- --uninstall</span></div>
+                    <button class="copy-btn" onclick="copyCommand('uninstall-command',this)">复制卸载命令</button>
+                </div>
+                <p class="command-hint">自动适配 macOS (Intel/Apple Silicon) · 脚本运行后可交互选择镜像源</p>
+                <div class="support-links">
+                    <a href="https://afdian.com/a/mintimate" target="_blank" class="link-afdian">❤ 觉得好用？去爱发电支持一下</a>
+                    <a href="https://space.bilibili.com/355567627" target="_blank" class="link-bilibili">📺 助力 Mintimate 突破 1w 粉丝！</a>
                 </div>
             </div>
-            <div class="col-span-4 reveal">
-                <div class="card">
-                    <div class="card-title">实时数据</div>
-                    <div class="stats-grid">
-                        <div class="stat-card">
-                            <span class="stat-value" id="total-calls">-</span>
-                            <span class="stat-label">累计安装次数</span>
-                        </div>
-                        <div class="stat-card">
-                            <span class="stat-value" id="last-call" style="font-size: 1.5rem;">-</span>
-                            <span class="stat-label">最近一次安装</span>
-                        </div>
+            <div class="card reveal">
+                <div class="card-title">实时数据</div>
+                <div class="stats-grid">
+                    <div class="stat-card"><span class="stat-value" id="total-calls">-</span><span class="stat-label">累计安装次数</span></div>
+                    <div class="stat-card"><span class="stat-value" id="last-call" style="font-size:1.5rem">-</span><span class="stat-label">最近一次安装</span></div>
+                </div>
+            </div>
+        </div>
+
+        <div class="card reveal section">
+            <div class="card-title">核心特性</div>
+            <div class="features-grid">
+                <div class="feature-item"><span class="feature-title">多镜像源支持</span><span class="feature-desc">内置中科大 USTC、阿里云、清华 TUNA 等国内优质镜像源，支持一键切换。</span></div>
+                <div class="feature-item"><span class="feature-title">全架构兼容</span><span class="feature-desc">完美支持 macOS Intel (x86_64) 和 Apple Silicon (M1/M2/M3/M4) 芯片。</span></div>
+                <div class="feature-item"><span class="feature-title">Shell 自动配置</span><span class="feature-desc">自动识别 Zsh/Bash，智能写入环境变量配置，无需手动编辑配置文件。</span></div>
+                <div class="feature-item"><span class="feature-title">安全备份</span><span class="feature-desc">修改任何系统配置文件前都会自动创建备份，确保系统安全，随时可回滚。</span></div>
+            </div>
+        </div>
+
+        <div class="grid-1-1">
+            <div class="card reveal">
+                <div class="card-title">安装流程</div>
+                <div class="steps">
+                    <div class="step"><div class="step-title">运行脚本</div><p class="step-desc">复制命令并在终端执行，脚本会自动检测系统环境。</p></div>
+                    <div class="step"><div class="step-title">选择镜像源</div><p class="step-desc">根据提示选择下载源（推荐中科大或阿里云），输入对应数字回车。</p></div>
+                    <div class="step"><div class="step-title">等待安装</div><p class="step-desc">脚本自动下载并配置 Homebrew，通常只需 1-3 分钟。</p></div>
+                    <div class="step"><div class="step-title">生效配置</div><p class="step-desc">安装完成后，执行 <code>source ~/.zshrc</code> 或重启终端即可使用。</p></div>
+                </div>
+            </div>
+            <div class="card reveal">
+                <div class="card-title">镜像源对比</div>
+                <div class="table-wrap">
+                    <table>
+                        <thead><tr><th>镜像源</th><th>特点</th><th>推荐指数</th></tr></thead>
+                        <tbody>
+                            <tr><td class="td-name">USTC 中科大</td><td>同步频率高，极其稳定</td><td><span class="mirror-tag tag-recommend">⭐⭐⭐⭐⭐</span></td></tr>
+                            <tr><td class="td-name">Aliyun 阿里云</td><td>CDN 加速，下载极快</td><td><span class="mirror-tag tag-fast">⭐⭐⭐⭐⭐</span></td></tr>
+                            <tr><td class="td-name">Tsinghua 清华</td><td>教育网首选，老牌镜像</td><td><span class="mirror-tag tag-edu">⭐⭐⭐⭐</span></td></tr>
+                        </tbody>
+                    </table>
+                </div>
+                <div style="margin-top:24px">
+                    <div class="card-title sub-title">默认安装路径</div>
+                    <div class="path-grid">
+                        <div class="path-item"><div><span class="arch">Apple Silicon (M1/M2/M3)</span> <span class="note">ARM64 架构</span></div><span class="path">/opt/homebrew</span></div>
+                        <div class="path-item"><div><span class="arch">Intel Mac</span> <span class="note">x86_64 架构</span></div><span class="path">/usr/local</span></div>
                     </div>
                 </div>
             </div>
         </div>
 
-        <!-- 第二行：功能特性 -->
-        <div class="grid-layout">
-            <div class="col-span-12 reveal">
-                <div class="card">
-                    <div class="card-title">核心特性</div>
-                    <div class="features-grid">
-                        <div class="feature-item">
-                            <span class="feature-title">多镜像源支持</span>
-                            <span class="feature-desc">内置中科大 USTC、阿里云、清华 TUNA 等国内优质镜像源，支持一键切换。</span>
-                        </div>
-                        <div class="feature-item">
-                            <span class="feature-title">全架构兼容</span>
-                            <span class="feature-desc">完美支持 macOS Intel (x86_64) 和 Apple Silicon (M1/M2/M3/M4) 芯片。</span>
-                        </div>
-                        <div class="feature-item">
-                            <span class="feature-title">Shell 自动配置</span>
-                            <span class="feature-desc">自动识别 Zsh/Bash，智能写入环境变量配置，无需手动编辑配置文件。</span>
-                        </div>
-                        <div class="feature-item">
-                            <span class="feature-title">安全备份</span>
-                            <span class="feature-desc">修改任何系统配置文件前都会自动创建备份，确保系统安全，随时可回滚。</span>
-                        </div>
-                    </div>
-                </div>
+        <div class="card reveal section">
+            <div class="card-title">自动化配置详情</div>
+            <p class="muted" style="margin-bottom:16px">脚本会自动配置以下环境变量，确保 <code>brew install</code> 速度飞快：</p>
+            <ul class="env-list">
+                <li><span class="env-key">HOMEBREW_BREW_GIT_REMOTE</span><span class="env-comment">brew 核心仓库镜像</span></li>
+                <li><span class="env-key">HOMEBREW_CORE_GIT_REMOTE</span><span class="env-comment">核心软件仓库镜像</span></li>
+                <li><span class="env-key">HOMEBREW_BOTTLE_DOMAIN</span><span class="env-comment">二进制预编译包镜像</span></li>
+                <li><span class="env-key">HOMEBREW_API_DOMAIN</span><span class="env-comment">Homebrew API 镜像</span></li>
+            </ul>
+        </div>
+
+        <div class="card reveal section">
+            <div class="card-title">常见问题解答</div>
+            <div class="faq-grid">
+                <div class="faq-item"><div class="faq-q">安装后提示 "command not found: brew"</div><div class="faq-a">这是因为环境变量未生效。请执行 <code>source ~/.zshrc</code> (或 <code>~/.bash_profile</code>)，或者直接关闭当前终端窗口并重新打开一个新的。</div></div>
+                <div class="faq-item"><div class="faq-q">brew update 报错或卡住</div><div class="faq-a">可能是 git 仓库状态异常。尝试运行 <code>brew update-reset</code> 重置仓库，或者重新运行本安装脚本选择「重置配置」。</div></div>
+                <div class="faq-item"><div class="faq-q">如何更换其他镜像源？</div><div class="faq-a">无需卸载，直接重新运行安装脚本，在菜单中选择新的镜像源即可。脚本会自动覆盖旧的配置。</div></div>
+                <div class="faq-item"><div class="faq-q">需要安装 Xcode Command Line Tools 吗？</div><div class="faq-a">是的，这是 Homebrew 的必要依赖。脚本会自动检测，如果未安装会弹出系统提示，点击「安装」即可。</div></div>
             </div>
         </div>
 
-        <!-- 第三行：安装流程 + 镜像源对比 -->
-        <div class="grid-layout">
-            <div class="col-span-6 reveal">
-                <div class="card">
-                    <div class="card-title">安装流程</div>
-                    <div class="steps">
-                        <div class="step">
-                            <div class="step-title">运行脚本</div>
-                            <p class="step-desc">复制命令并在终端执行，脚本会自动检测系统环境。</p>
-                        </div>
-                        <div class="step">
-                            <div class="step-title">选择镜像源</div>
-                            <p class="step-desc">根据提示选择下载源（推荐中科大或阿里云），输入对应数字回车。</p>
-                        </div>
-                        <div class="step">
-                            <div class="step-title">等待安装</div>
-                            <p class="step-desc">脚本自动下载并配置 Homebrew，通常只需 1-3 分钟。</p>
-                        </div>
-                        <div class="step">
-                            <div class="step-title">生效配置</div>
-                            <p class="step-desc">安装完成后，执行 <code>source ~/.zshrc</code> 或重启终端即可使用。</p>
-                        </div>
-                    </div>
-                </div>
-            </div>
-            <div class="col-span-6 reveal">
-                <div class="card">
-                    <div class="card-title">镜像源对比</div>
-                    <div class="table-wrap">
-                        <table>
-                            <thead>
-                                <tr>
-                                    <th>镜像源</th>
-                                    <th>特点</th>
-                                    <th>推荐指数</th>
-                                </tr>
-                            </thead>
-                            <tbody>
-                                <tr>
-                                    <td><strong style="color: #3d2f1d;">USTC 中科大</strong></td>
-                                    <td>同步频率高，极其稳定</td>
-                                    <td><span class="mirror-tag tag-recommend">⭐⭐⭐⭐⭐</span></td>
-                                </tr>
-                                <tr>
-                                    <td><strong style="color: #3d2f1d;">Aliyun 阿里云</strong></td>
-                                    <td>CDN 加速，下载极快</td>
-                                    <td><span class="mirror-tag tag-fast">⭐⭐⭐⭐⭐</span></td>
-                                </tr>
-                                <tr>
-                                    <td><strong style="color: #3d2f1d;">Tsinghua 清华</strong></td>
-                                    <td>教育网首选，老牌镜像</td>
-                                    <td><span class="mirror-tag tag-edu">⭐⭐⭐⭐</span></td>
-                                </tr>
-                            </tbody>
-                        </table>
-                    </div>
-                    <div style="margin-top: 24px;">
-                        <div class="card-title" style="font-size: 1.1rem; margin-bottom: 12px;">默认安装路径</div>
-                        <div class="path-grid">
-                            <div class="path-item">
-                                <div>
-                                    <span class="arch">Apple Silicon (M1/M2/M3)</span>
-                                    <span class="note">ARM64 架构</span>
-                                </div>
-                                <span class="path">/opt/homebrew</span>
-                            </div>
-                            <div class="path-item">
-                                <div>
-                                    <span class="arch">Intel Mac</span>
-                                    <span class="note">x86_64 架构</span>
-                                </div>
-                                <span class="path">/usr/local</span>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+        <div class="card reveal section" style="text-align:center;padding:40px">
+            <div class="card-title" style="justify-content:center">官方资源</div>
+            <div class="footer-links" style="margin-bottom:0">
+                <a href="https://brew.sh/" target="_blank">Homebrew 官网</a>
+                <a href="https://docs.brew.sh/" target="_blank">官方文档</a>
+                <a href="https://mirrors.ustc.edu.cn/help/brew.git.html" target="_blank">USTC 镜像帮助</a>
+                <a href="https://mirrors.tuna.tsinghua.edu.cn/help/homebrew/" target="_blank">清华 TUNA 镜像帮助</a>
             </div>
         </div>
-
-        <!-- 第四行：环境变量 + 卸载 -->
-        <div class="grid-layout">
-            <div class="col-span-12 reveal">
-                <div class="card">
-                    <div class="card-title">自动化配置详情</div>
-                    <p style="color: var(--text-muted); margin-bottom: 16px;">脚本会自动配置以下环境变量，确保 <code>brew install</code> 速度飞快：</p>
-                    <ul class="env-list">
-                        <li><span class="env-key">HOMEBREW_BREW_GIT_REMOTE</span> <span class="env-comment">brew 核心仓库镜像</span></li>
-                        <li><span class="env-key">HOMEBREW_CORE_GIT_REMOTE</span> <span class="env-comment">核心软件仓库镜像</span></li>
-                        <li><span class="env-key">HOMEBREW_BOTTLE_DOMAIN</span> <span class="env-comment">二进制预编译包镜像</span></li>
-                        <li><span class="env-key">HOMEBREW_API_DOMAIN</span> <span class="env-comment">Homebrew API 镜像</span></li>
-                    </ul>
-                </div>
-            </div>
-        </div>
-
-        <!-- FAQ -->
-        <div class="grid-layout">
-            <div class="col-span-12 reveal">
-                <div class="card">
-                    <div class="card-title">常见问题解答</div>
-                    <div class="faq-grid">
-                        <div class="faq-item">
-                            <div class="faq-q">安装后提示 "command not found: brew"</div>
-                            <div class="faq-a">这是因为环境变量未生效。请执行 <code>source ~/.zshrc</code> (或 <code>~/.bash_profile</code>)，或者直接关闭当前终端窗口并重新打开一个新的。</div>
-                        </div>
-                        <div class="faq-item">
-                            <div class="faq-q">brew update 报错或卡住</div>
-                            <div class="faq-a">可能是 git 仓库状态异常。尝试运行 <code>brew update-reset</code> 重置仓库，或者重新运行本安装脚本选择「重置配置」。</div>
-                        </div>
-                        <div class="faq-item">
-                            <div class="faq-q">如何更换其他镜像源？</div>
-                            <div class="faq-a">无需卸载，直接重新运行安装脚本，在菜单中选择新的镜像源即可。脚本会自动覆盖旧的配置。</div>
-                        </div>
-                        <div class="faq-item">
-                            <div class="faq-q">需要安装 Xcode Command Line Tools 吗？</div>
-                            <div class="faq-a">是的，这是 Homebrew 的必要依赖。脚本会自动检测，如果未安装会弹出系统提示，点击「安装」即可。</div>
-                        </div>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- 参考链接 -->
-        <div class="grid-layout">
-            <div class="col-span-12 reveal">
-                <div class="card" style="text-align: center; padding: 40px;">
-                    <div class="card-title" style="justify-content: center;">官方资源</div>
-                    <div class="footer-links" style="margin-bottom: 0;">
-                        <a href="https://brew.sh/" target="_blank">Homebrew 官网</a>
-                        <a href="https://docs.brew.sh/" target="_blank">官方文档</a>
-                        <a href="https://mirrors.ustc.edu.cn/help/brew.git.html" target="_blank">USTC 镜像帮助</a>
-                        <a href="https://mirrors.tuna.tsinghua.edu.cn/help/homebrew/" target="_blank">清华 TUNA 镜像帮助</a>
-                    </div>
-                </div>
-            </div>
-        </div>
-
-        <!-- Footer -->
         <div class="footer">
             <p>Made by <a href="https://www.mintimate.cn" target="_blank">Mintimate</a> · Open Source on <a href="https://github.com/Mintimate/homebrew-cn" target="_blank">GitHub</a></p>
-            <p style="margin-top: 8px; font-size: 0.8rem; opacity: 0.6;">本站仅提供安装脚本托管，Homebrew 商标归原作者所有</p>
+            <p class="footer-sub">本站仅提供安装脚本托管，Homebrew 商标归原作者所有</p>
         </div>
     </div>
 
     <script>
-        // 动态设置安装命令的域名
-        const domain = window.location.host;
-        const protocol = window.location.protocol;
-        const installCommandEl = document.getElementById('install-command');
-        const uninstallCommandEl = document.getElementById('uninstall-command');
+        const {host,protocol}=window.location;
+        let baseUrl='https://brew-cn.mintimate.cn';
+        if(host&&!/localhost|127\.0\.0\.1/.test(host)&&protocol!=='file:') baseUrl=`${protocol}//${host}`;
+        document.getElementById('install-command').textContent=`/bin/zsh -c "$(curl -fsSL ${baseUrl}/install)"`;
+        document.getElementById('uninstall-command').textContent=`/bin/zsh -c "$(curl -fsSL ${baseUrl}/install)" -- --uninstall`;
 
-        let baseUrl = 'https://brew-cn.mintimate.cn';
-        if (domain && !domain.includes('localhost') && !domain.includes('127.0.0.1') && protocol !== 'file:') {
-            baseUrl = `${protocol}//${domain}`;
+        function copyCommand(id,btn){
+            const text=document.getElementById(id).textContent,orig=btn.textContent;
+            const done=()=>{btn.textContent='已复制!';btn.classList.add('copied');setTimeout(()=>{btn.textContent=orig;btn.classList.remove('copied')},2000)};
+            navigator.clipboard.writeText(text).then(done).catch(()=>{const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);done()});
         }
 
-        installCommandEl.textContent = `/bin/zsh -c "$(curl -fsSL ${baseUrl}/install)"`;
-        uninstallCommandEl.textContent = `/bin/zsh -c "$(curl -fsSL ${baseUrl}/install)" -- --uninstall`;
-
-        function copyCommand(elementId, btn) {
-            const text = document.getElementById(elementId).textContent;
-            navigator.clipboard.writeText(text).then(() => {
-                const originalText = btn.textContent;
-                btn.textContent = '已复制!';
-                btn.classList.add('copied');
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.classList.remove('copied');
-                }, 2000);
-            }).catch(() => {
-                // fallback
-                const ta = document.createElement('textarea');
-                ta.value = text;
-                document.body.appendChild(ta);
-                ta.select();
-                document.execCommand('copy');
-                document.body.removeChild(ta);
-                const originalText = btn.textContent;
-                btn.textContent = '已复制!';
-                btn.classList.add('copied');
-                setTimeout(() => {
-                    btn.textContent = originalText;
-                    btn.classList.remove('copied');
-                }, 2000);
-            });
+        async function fetchStats(){
+            try{
+                const r=await(await fetch('/api/stats')).json();
+                if(r.code!==0)return;
+                document.getElementById('total-calls').textContent=r.data.totalCalls.toLocaleString();
+                const t=r.data.lastCallTime;
+                if(!t){document.getElementById('last-call').textContent='暂无记录';return}
+                const d=new Date(t),ms=Date.now()-d,m=ms/6e4|0,h=ms/36e5|0,dy=ms/864e5|0;
+                const ago=m<1?'刚刚':m<60?`${m} 分钟前`:h<24?`${h} 小时前`:dy<30?`${dy} 天前`:d.toLocaleDateString('zh-CN');
+                const el=document.getElementById('last-call');el.textContent=ago;el.title=d.toLocaleString('zh-CN');
+            }catch(e){console.error('获取统计数据失败:',e)}
         }
 
-        // 获取统计数据
-        async function fetchStats() {
-            try {
-                const response = await fetch('/api/stats');
-                const result = await response.json();
-                if (result.code === 0) {
-                    const total = result.data.totalCalls;
-                    document.getElementById('total-calls').textContent = total.toLocaleString();
-
-                    if (result.data.lastCallTime) {
-                        const date = new Date(result.data.lastCallTime);
-                        const now = new Date();
-                        const diffMs = now - date;
-                        const diffMin = Math.floor(diffMs / 60000);
-                        const diffHour = Math.floor(diffMs / 3600000);
-                        const diffDay = Math.floor(diffMs / 86400000);
-
-                        let timeAgo;
-                        if (diffMin < 1) {
-                            timeAgo = '刚刚';
-                        } else if (diffMin < 60) {
-                            timeAgo = `${diffMin} 分钟前`;
-                        } else if (diffHour < 24) {
-                            timeAgo = `${diffHour} 小时前`;
-                        } else if (diffDay < 30) {
-                            timeAgo = `${diffDay} 天前`;
-                        } else {
-                            timeAgo = date.toLocaleDateString('zh-CN');
-                        }
-                        document.getElementById('last-call').textContent = timeAgo;
-                        document.getElementById('last-call').title = date.toLocaleString('zh-CN');
-                    } else {
-                        document.getElementById('last-call').textContent = '暂无记录';
-                    }
-                }
-            } catch (error) {
-                console.error('获取统计数据失败:', error);
-            }
-        }
-
-        // 滚动显现动画
-        function initScrollReveal() {
-            const reveals = document.querySelectorAll('.reveal');
-            
-            const observer = new IntersectionObserver((entries) => {
-                entries.forEach(entry => {
-                    if (entry.isIntersecting) {
-                        entry.target.classList.add('active');
-                        observer.unobserve(entry.target); // 只触发一次
-                    }
-                });
-            }, {
-                threshold: 0.1,
-                rootMargin: "0px 0px -50px 0px"
-            });
-
-            reveals.forEach(reveal => observer.observe(reveal));
-        }
-
-        // 初始化
-        document.addEventListener('DOMContentLoaded', () => {
-            fetchStats();
-            initScrollReveal();
-            // 每30秒刷新一次数据
-            setInterval(fetchStats, 30000);
+        document.addEventListener('DOMContentLoaded',()=>{
+            fetchStats();setInterval(fetchStats,3e4);
+            const ob=new IntersectionObserver(es=>es.forEach(e=>{if(e.isIntersecting){e.target.classList.add('active');ob.unobserve(e.target)}}),{threshold:.1,rootMargin:'0px 0px -50px 0px'});
+            document.querySelectorAll('.reveal').forEach(el=>ob.observe(el));
         });
     </script>
 </body>
