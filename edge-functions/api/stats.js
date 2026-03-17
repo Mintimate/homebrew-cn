@@ -20,10 +20,19 @@ export async function onRequest(context) {
     if (request.method === 'GET') {
       const totalCalls = await WEBSITE_KV.get('homebrew_cn_stats:total_calls');
       const lastCallTime = await WEBSITE_KV.get('homebrew_cn_stats:last_call_time');
+      const recentInstallsStr = await WEBSITE_KV.get('homebrew_cn_stats:recent_installs');
       
+      let recentInstalls = [];
+      try {
+        if (recentInstallsStr) {
+          recentInstalls = JSON.parse(recentInstallsStr);
+        }
+      } catch (_) {}
+
       const stats = {
         totalCalls: parseInt(totalCalls || '0'),
-        lastCallTime: lastCallTime || null
+        lastCallTime: lastCallTime || null,
+        recentInstalls
       };
 
       return new Response(JSON.stringify({ code: RES_CODE.SUCCESS, data: stats }), {

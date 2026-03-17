@@ -69,6 +69,14 @@
         .stat-value { font-size: 2.5rem; font-weight: 800; background: linear-gradient(135deg,var(--accent-light),var(--gold)); -webkit-background-clip: text; background-clip: text; -webkit-text-fill-color: transparent; display: block; margin-bottom: 8px; line-height: 1.1; }
         .stat-label { font-size: .9rem; color: var(--text-muted); }
 
+        .recent-list { display: flex; flex-direction: column; gap: 8px; }
+        .recent-item { display: flex; align-items: center; gap: 10px; padding: 10px 14px; background: rgba(255,255,255,.65); border: 1px solid rgba(255,184,77,.18); border-radius: 10px; font-size: .9rem; transition: all .3s; }
+        .recent-item:hover { background: rgba(255,244,220,.95); border-color: rgba(255,184,77,.35); }
+        .recent-item .ri-icon { font-size: 1.2rem; }
+        .recent-item .ri-location { font-weight: 600; color: #3d2f1d; flex: 1; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+        .recent-item .ri-ip { font-family: "SF Mono",Consolas,monospace; font-size: .75rem; color: #c05621; background: rgba(237, 137, 54, 0.15); padding: 2px 8px; border-radius: 6px; border: 1px solid rgba(237, 137, 54, 0.25); margin: 0 4px; }
+        .recent-item .ri-time { font-size: .8rem; color: var(--text-muted); white-space: nowrap; }
+
         .features-grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(220px,1fr)); gap: 20px; }
         .feature-item { padding: 24px; background: rgba(255,255,255,.65); border: 1px solid rgba(255,184,77,.2); border-radius: 12px; transition: all .3s; }
         .feature-item:hover { background: rgba(255,244,220,.95); border-color: rgba(255,184,77,.42); transform: translateY(-4px); }
@@ -161,6 +169,12 @@
                 <div class="stats-grid">
                     <div class="stat-card"><span class="stat-value" id="total-calls">-</span><span class="stat-label">累计安装次数</span></div>
                     <div class="stat-card"><span class="stat-value" id="last-call" style="font-size:1.5rem">-</span><span class="stat-label">最近一次安装</span></div>
+                </div>
+                <div class="recent-installs" style="margin-top:20px">
+                    <div class="card-title" style="font-size:1.1rem;margin-bottom:12px">🌍 最近安装的网友来自</div>
+                    <div class="recent-list" id="recent-installs">
+                        <div class="recent-placeholder" style="text-align:center;color:var(--text-muted);font-size:.9rem;padding:16px 0">加载中...</div>
+                    </div>
                 </div>
             </div>
         </div>
@@ -256,6 +270,22 @@
             navigator.clipboard.writeText(text).then(done).catch(()=>{const t=document.createElement('textarea');t.value=text;document.body.appendChild(t);t.select();document.execCommand('copy');document.body.removeChild(t);done()});
         }
 
+        function renderRecentInstalls(installs){
+            const container=document.getElementById('recent-installs');
+            if(!installs||installs.length===0){
+                container.innerHTML='<div class="recent-placeholder" style="text-align:center;color:var(--text-muted);font-size:.9rem;padding:16px 0">暂无安装记录</div>';
+                return;
+            }
+            container.innerHTML=installs.map(item=>{
+                const filterUnknown = (val) => val && !val.toLowerCase().includes('unknown') ? val : '';
+                const loc=[filterUnknown(item.city),filterUnknown(item.region),filterUnknown(item.country)].filter(Boolean).join(', ')||'未知地区';
+                const dt=new Date(item.time);
+                const ms=Date.now()-dt,m=ms/6e4|0,h=ms/36e5|0,dy=ms/864e5|0;
+                const ago=m<1?'刚刚':m<60?`${m}分钟前`:h<24?`${h}小时前`:dy<30?`${dy}天前`:dt.toLocaleDateString('zh-CN');
+                return `<div class="recent-item"><span class="ri-icon">📍</span><span class="ri-location" title="${loc}">${loc}</span><span class="ri-ip">${item.ip||''}</span><span class="ri-time">${ago}</span></div>`;
+            }).join('');
+        }
+
         async function fetchStats(){
             try{
                 const r=await(await fetch('/api/stats')).json();
@@ -266,6 +296,7 @@
                 const d=new Date(t),ms=Date.now()-d,m=ms/6e4|0,h=ms/36e5|0,dy=ms/864e5|0;
                 const ago=m<1?'刚刚':m<60?`${m} 分钟前`:h<24?`${h} 小时前`:dy<30?`${dy} 天前`:d.toLocaleDateString('zh-CN');
                 const el=document.getElementById('last-call');el.textContent=ago;el.title=d.toLocaleString('zh-CN');
+                renderRecentInstalls(r.data.recentInstalls||[]);
             }catch(e){console.error('获取统计数据失败:',e)}
         }
 
