@@ -1,7 +1,8 @@
-#!/bin/zsh
-# Homebrew 镜像源一键安装脚本 (macOS)
+#!/bin/bash
+# Homebrew 镜像源一键安装脚本 (macOS & Linux)
 # 参考: https://docs.brew.sh/Installation
-# 镜像源: 清华 TUNA / 中科大 USTC
+#       https://docs.brew.sh/Homebrew-on-Linux
+# 镜像源: 清华 TUNA / 中科大 USTC / 阿里云 Aliyun
 
 set -e
 
@@ -12,7 +13,7 @@ YELLOW='\033[0;33m'
 BLUE='\033[0;34m'
 CYAN='\033[0;36m'
 BOLD='\033[1m'
-NC='\033[0m' # 无颜色
+NC='\033[0m' # No color
 
 # ========== 工具函数 ==========
 info() {
@@ -47,17 +48,29 @@ get_shell_profile() {
     shell_name="$(basename "$SHELL")"
     case "$shell_name" in
         zsh)
-            echo "$HOME/.zshrc"
+            if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+                echo "$HOME/.zshrc"
+            elif [[ -f "$HOME/.zshrc" ]]; then
+                echo "$HOME/.zshrc"
+            else
+                echo "$HOME/.zshrc"
+            fi
             ;;
         bash)
-            if [[ -f "$HOME/.bash_profile" ]]; then
+            if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+                echo "$HOME/.bashrc"
+            elif [[ -f "$HOME/.bash_profile" ]]; then
                 echo "$HOME/.bash_profile"
             else
                 echo "$HOME/.bashrc"
             fi
             ;;
         *)
-            echo "$HOME/.zshrc"
+            if [[ "$OSTYPE" == "linux-gnu"* ]]; then
+                echo "$HOME/.bashrc"
+            else
+                echo "$HOME/.zshrc"
+            fi
             ;;
     esac
 }
@@ -68,7 +81,8 @@ detect_os() {
     os="$(uname -s)"
     case "$os" in
         Darwin) echo "macos" ;;
-        *)      abort "本脚本仅支持 macOS，当前系统: $os" ;;
+        Linux)  echo "linux" ;;
+        *)      abort "本脚本仅支持 macOS 和 Linux，当前系统: $os" ;;
     esac
 }
 
@@ -85,7 +99,10 @@ detect_arch() {
 # 获取 Homebrew 安装前缀
 get_homebrew_prefix() {
     local arch="$1"
-    if [[ "$arch" == "arm64" ]]; then
+    local os="$2"
+    if [[ "$os" == "linux" ]]; then
+        echo "/home/linuxbrew/.linuxbrew"
+    elif [[ "$arch" == "arm64" ]]; then
         echo "/opt/homebrew"
     else
         echo "/usr/local"
@@ -133,6 +150,7 @@ wait_for_xcode_clt() {
 }
 
 preflight_check() {
+    local os="$1"
     info "正在进行安装前置检查..."
 
     # 检查是否以 root 运行（不推荐）
@@ -142,25 +160,81 @@ preflight_check() {
         read -r
     fi
 
-    # 检查 Xcode Command Line Tools（macOS 上 git/curl 等都依赖它）
-    if ! check_xcode_clt; then
-        warn "未检测到 Xcode Command Line Tools，这是安装 Homebrew 的前置依赖。"
-        info "正在触发 Xcode Command Line Tools 安装..."
-        xcode-select --install 2>/dev/null || true
-        # 等待安装完成，而不是退出脚本
-        wait_for_xcode_clt
-    else
-        success "Xcode Command Line Tools 已安装 ✅"
+    if [[ "$os" == "macos" ]]; then
+        # 检查 Xcode Command Line Tools（macOS 上 git/curl 等都依赖它）
+        if ! check_xcode_clt; then
+            warn "未检测到 Xcode Command Line Tools，这是安装 Homebrew 的前置依赖。"
+            info "正在触发 Xcode Command Line Tools 安装..."
+            xcode-select --install 2>/dev/null || true
+            # 等待安装完成，而不是退出脚本
+            wait_for_xcode_clt
+        else
+            success "Xcode Command Line Tools 已安装 ✅"
+        fi
+    elif [[ "$os" == "linux" ]]; then
+        # Linux: 检查必要的构建工具和依赖
+        info "检查 Linux 构建依赖..."
+        check_linux_dependencies
     fi
 
     # 检查 git
     if ! command_exists git; then
-        abort "未检测到 git，请确认 Xcode Command Line Tools 已正确安装:\n  xcode-select --install"
+        if [[ "$os" == "macos" ]]; then
+            abort "未检测到 git，请确认 Xcode Command Line Tools 已正确安装:\n  xcode-select --install"
+        else
+            abort "未检测到 git，请先安装 git:\n  Ubuntu/Debian: sudo apt-get install git\n  Fedora/RHEL: sudo dnf install git\n  Arch: sudo pacman -S git"
+        fi
     fi
 
     # 检查 curl
     if ! command_exists curl; then
-        abort "未检测到 curl，请先安装 Xcode Command Line Tools: xcode-select --install"
+        if [[ "$os" == "macos" ]]; then
+            abort "未检测到 curl，请先安装 Xcode Command Line Tools: xcode-select --install"
+        else
+            abort "未检测到 curl，请先安装 curl:\n  Ubuntu/Debian: sudo apt-get install curl\n  Fedora/RHEL: sudo dnf install curl\n  Arch: sudo pacman -S curl"
+        fi
+    fi
+}
+
+# ========== Linux 依赖检查 ==========
+check_linux_dependencies() {
+    local missing_deps=()
+
+    # 检查基础构建工具
+    if ! command_exists gcc && ! command_exists cc; then
+        missing_deps+=("gcc/build-essential")
+    fi
+
+    if ! command_exists make; then
+        missing_deps+=("make")
+    fi
+
+    if [[ ${#missing_deps[@]} -gt 0 ]]; then
+        warn "检测到以下构建依赖缺失: ${missing_deps[*]}"
+        echo ""
+        echo -e "${BOLD}请根据你的发行版安装构建工具:${NC}"
+        if command_exists apt-get; then
+            echo -e "  ${CYAN}sudo apt-get install build-essential procps curl file git${NC}"
+        elif command_exists dnf; then
+            echo -e "  ${CYAN}sudo dnf group install 'Development Tools'${NC}"
+            echo -e "  ${CYAN}sudo dnf install procps-ng curl file git${NC}"
+        elif command_exists yum; then
+            echo -e "  ${CYAN}sudo yum groupinstall 'Development Tools'${NC}"
+            echo -e "  ${CYAN}sudo yum install procps-ng curl file git${NC}"
+        elif command_exists pacman; then
+            echo -e "  ${CYAN}sudo pacman -S base-devel procps-ng curl file git${NC}"
+        elif command_exists apk; then
+            echo -e "  ${CYAN}sudo apk add build-base procps curl file git${NC}"
+        fi
+        echo ""
+        echo -n -e "是否继续安装？依赖可以稍后再安装。[${GREEN}Y${NC}/${RED}n${NC}]: "
+        read -r continue_choice
+        if [[ "$continue_choice" =~ ^[Nn]$ ]]; then
+            info "已取消安装。请安装依赖后重新运行本脚本。"
+            exit 0
+        fi
+    else
+        success "Linux 构建依赖检查通过 ✅"
     fi
 }
 
@@ -226,8 +300,19 @@ select_mirror() {
 # ========== 安装 Homebrew ==========
 install_homebrew() {
     local arch="$1"
+    local os="$2"
     local prefix
-    prefix="$(get_homebrew_prefix "$arch")"
+    prefix="$(get_homebrew_prefix "$arch" "$os")"
+
+    # Determine HOMEBREW_REPOSITORY
+    local homebrew_repo
+    if [[ "$os" == "linux" ]]; then
+        homebrew_repo="$prefix/Homebrew"
+    elif [[ "$arch" == "arm64" ]]; then
+        homebrew_repo="$prefix"
+    else
+        homebrew_repo="$prefix/Homebrew"
+    fi
 
     # 检查是否已安装
     if [[ -f "$prefix/bin/brew" ]]; then
@@ -239,10 +324,10 @@ install_homebrew() {
             exit 0
         fi
         info "将为已有的 Homebrew 重新配置镜像源..."
-        configure_mirror "$prefix"
-        configure_shell_env "$arch" "$prefix"
+        configure_mirror "$prefix" "$homebrew_repo"
+        configure_shell_env "$arch" "$prefix" "$os"
         success "镜像源配置完成！"
-        show_finish_info "$prefix"
+        show_finish_info "$prefix" "$os"
         return
     fi
 
@@ -253,37 +338,49 @@ install_homebrew() {
     # 创建安装目录
     if [[ ! -d "$prefix" ]]; then
         info "创建 Homebrew 安装目录 $prefix ..."
-        sudo mkdir -p "$prefix"
-        sudo chown -R "$(whoami):admin" "$prefix"
+        if [[ "$os" == "linux" ]]; then
+            sudo mkdir -p "$prefix"
+            sudo chown -R "$(whoami)" "$prefix"
+        else
+            sudo mkdir -p "$prefix"
+            sudo chown -R "$(whoami):admin" "$prefix"
+        fi
+    fi
+
+    # For Linux, HOMEBREW_REPOSITORY is a subdirectory
+    if [[ "$homebrew_repo" != "$prefix" && ! -d "$homebrew_repo" ]]; then
+        info "创建 Homebrew 仓库目录 $homebrew_repo ..."
+        sudo mkdir -p "$homebrew_repo"
+        sudo chown -R "$(whoami)" "$homebrew_repo"
     fi
 
     # 使用 git clone 安装 Homebrew
     info "从 ${MIRROR_NAME} 克隆 Homebrew 仓库..."
-    
+
     local max_retries=3
     local retry_count=0
     local clone_success=false
 
     while [[ $retry_count -lt $max_retries ]]; do
-        if [[ -d "$prefix/.git" ]]; then
+        if [[ -d "$homebrew_repo/.git" ]]; then
             info "检测到已有的 git 仓库，更新中... (尝试 $((retry_count+1))/$max_retries)"
-            git -C "$prefix" remote set-url origin "$BREW_GIT_REMOTE"
-            if git -C "$prefix" fetch --force origin && git -C "$prefix" reset --hard origin/master; then
+            git -C "$homebrew_repo" remote set-url origin "$BREW_GIT_REMOTE"
+            if git -C "$homebrew_repo" fetch --force origin && git -C "$homebrew_repo" reset --hard origin/master; then
                 clone_success=true
                 break
             fi
         else
             info "正在克隆... (尝试 $((retry_count+1))/$max_retries)"
             # 采用 init + fetch + reset 的方式，避免目标目录非空时 clone 失败
-            git -C "$prefix" init -q
-            git -C "$prefix" config remote.origin.url "$BREW_GIT_REMOTE"
-            git -C "$prefix" config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
-            if git -C "$prefix" fetch --force --depth=1 origin && git -C "$prefix" reset --hard origin/master; then
+            git -C "$homebrew_repo" init -q
+            git -C "$homebrew_repo" config remote.origin.url "$BREW_GIT_REMOTE"
+            git -C "$homebrew_repo" config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
+            if git -C "$homebrew_repo" fetch --force --depth=1 origin && git -C "$homebrew_repo" reset --hard origin/master; then
                 clone_success=true
                 break
             fi
         fi
-        
+
         retry_count=$((retry_count+1))
         if [[ $retry_count -lt $max_retries ]]; then
             warn "克隆失败，可能是镜像源服务器不稳定 (如 502 错误)。等待 3 秒后重试..."
@@ -291,17 +388,27 @@ install_homebrew() {
         fi
     done
 
-    if [[ "$clone_success" != true || ! -f "$prefix/bin/brew" ]]; then
-        abort "Homebrew 安装失败！\n  已尝试 $max_retries 次均失败。\n  这通常是因为所选镜像源（如清华 TUNA）当前服务不稳定或正在同步中（返回 502/504 错误）。\n  建议：重新运行脚本并选择【中科大 USTC】镜像源，或稍后再试。"
+    if [[ "$clone_success" != true ]]; then
+        abort "Homebrew 安装失败！\n  已尝试 $max_retries 次均失败。\n  这通常是因为所选镜像源当前服务不稳定。\n  建议：重新运行脚本并选择【中科大 USTC】镜像源，或稍后再试。"
+    fi
+
+    # For Linux/Intel Mac, create the symlink: prefix/bin/brew -> ../Homebrew/bin/brew
+    if [[ "$homebrew_repo" != "$prefix" ]]; then
+        mkdir -p "$prefix/bin"
+        ln -sf "../Homebrew/bin/brew" "$prefix/bin/brew"
+    fi
+
+    if [[ ! -f "$prefix/bin/brew" ]]; then
+        abort "Homebrew 安装失败！brew 可执行文件未找到。"
     fi
 
     success "Homebrew 核心仓库克隆完成！"
 
     # 配置镜像
-    configure_mirror "$prefix"
+    configure_mirror "$prefix" "$homebrew_repo"
 
     # 配置 shell 环境变量
-    configure_shell_env "$arch" "$prefix"
+    configure_shell_env "$arch" "$prefix" "$os"
 
     # 立即加载环境变量
     eval "$("$prefix/bin/brew" shellenv)"
@@ -316,6 +423,7 @@ install_homebrew() {
 # ========== 配置镜像源 ==========
 configure_mirror() {
     local prefix="$1"
+    local homebrew_repo="${2:-$prefix}"
     local shell_profile
     shell_profile="$(get_shell_profile)"
 
@@ -337,7 +445,7 @@ configure_mirror() {
     fi
 
     # 设置 brew git remote
-    git -C "$prefix" remote set-url origin "$BREW_GIT_REMOTE" 2>/dev/null || true
+    git -C "$homebrew_repo" remote set-url origin "$BREW_GIT_REMOTE" 2>/dev/null || true
 
     if [[ "$MIRROR_NAME" == "官方源" ]]; then
         info "使用官方源，已清理旧的镜像配置。"
@@ -364,6 +472,7 @@ configure_mirror() {
 configure_shell_env() {
     local arch="$1"
     local prefix="$2"
+    local os="${3:-macos}"
     local shell_profile
     shell_profile="$(get_shell_profile)"
 
@@ -382,6 +491,9 @@ configure_shell_env() {
 
     info "配置 Homebrew 环境变量到 $shell_profile ..."
 
+    local shell_name
+    shell_name="$(basename "$SHELL")"
+
     {
         echo ""
         echo "# Homebrew 环境配置"
@@ -389,11 +501,18 @@ configure_shell_env() {
     } >> "$shell_profile"
 
     success "Homebrew 环境变量已写入 $shell_profile"
+
+    # Linux 上额外提示安装 GCC
+    if [[ "$os" == "linux" ]]; then
+        echo ""
+        info "💡 建议在安装完成后运行 ${CYAN}brew install gcc${NC} 以获得最佳体验。"
+    fi
 }
 
 # ========== 完成信息 ==========
 show_finish_info() {
     local prefix="$1"
+    local os="${2:-macos}"
     local shell_profile
     shell_profile="$(get_shell_profile)"
 
@@ -423,6 +542,25 @@ show_finish_info() {
     echo -e "  ${CYAN}brew list${NC}                 列出已安装的软件"
     echo ""
 
+    if [[ "$os" == "linux" ]]; then
+        echo -e "${BOLD}Linux 用户推荐:${NC}"
+        echo -e "  ${CYAN}brew install gcc${NC}          安装 GCC（编译软件包可能需要）"
+        echo ""
+        echo -e "${BOLD}安装构建依赖（如果尚未安装）:${NC}"
+        if command_exists apt-get; then
+            echo -e "  ${CYAN}sudo apt-get install build-essential${NC}"
+        elif command_exists dnf; then
+            echo -e "  ${CYAN}sudo dnf group install 'Development Tools'${NC}"
+        elif command_exists yum; then
+            echo -e "  ${CYAN}sudo yum groupinstall 'Development Tools'${NC}"
+        elif command_exists pacman; then
+            echo -e "  ${CYAN}sudo pacman -S base-devel${NC}"
+        elif command_exists apk; then
+            echo -e "  ${CYAN}sudo apk add build-base${NC}"
+        fi
+        echo ""
+    fi
+
     if [[ "$MIRROR_NAME" != "官方源" ]]; then
         echo -e "${BOLD}切换回官方源:${NC}"
         echo -e "  编辑 ${CYAN}$shell_profile${NC}，删除 Homebrew 镜像配置相关行，然后运行:"
@@ -435,8 +573,9 @@ show_finish_info() {
 # ========== 卸载功能 ==========
 uninstall_homebrew() {
     local arch="$1"
+    local os="$2"
     local prefix
-    prefix="$(get_homebrew_prefix "$arch")"
+    prefix="$(get_homebrew_prefix "$arch" "$os")"
 
     echo ""
     echo -e "${BOLD}${RED}============================================${NC}"
@@ -450,8 +589,9 @@ uninstall_homebrew() {
         echo ""
         echo -e "如果 Homebrew 安装在其他位置，你可以手动删除相关目录。"
         echo -e "常见安装位置："
-        echo -e "  ${CYAN}/opt/homebrew${NC}     (Apple Silicon)"
-        echo -e "  ${CYAN}/usr/local${NC}        (Intel)"
+        echo -e "  ${CYAN}/opt/homebrew${NC}                  (macOS Apple Silicon)"
+        echo -e "  ${CYAN}/usr/local${NC}                     (macOS Intel)"
+        echo -e "  ${CYAN}/home/linuxbrew/.linuxbrew${NC}     (Linux)"
         echo ""
         exit 1
     fi
@@ -527,13 +667,18 @@ uninstall_homebrew() {
     # 参考官方卸载脚本定义的目录列表
     local homebrew_dirs=()
 
-    if [[ "$arch" == "arm64" ]]; then
+    if [[ "$os" == "linux" ]]; then
+        # Linux: 整个 /home/linuxbrew/.linuxbrew 都是 Homebrew 的
+        homebrew_dirs=(
+            "$prefix"
+        )
+    elif [[ "$arch" == "arm64" ]]; then
         # Apple Silicon: 整个 /opt/homebrew 都是 Homebrew 的
         homebrew_dirs=(
             "$prefix"
         )
     else
-        # Intel: /usr/local 下需要精确删除 Homebrew 相关子目录
+        # Intel Mac: /usr/local 下需要精确删除 Homebrew 相关子目录
         homebrew_dirs=(
             "$prefix/Homebrew"
             "$prefix/Caskroom"
@@ -550,10 +695,18 @@ uninstall_homebrew() {
     fi
 
     # 通用缓存目录
-    local cache_dirs=(
-        "$HOME/Library/Caches/Homebrew"
-        "$HOME/Library/Logs/Homebrew"
-    )
+    local cache_dirs=()
+    if [[ "$os" == "linux" ]]; then
+        cache_dirs=(
+            "$HOME/.cache/Homebrew"
+            "$HOME/.local/share/Homebrew"
+        )
+    else
+        cache_dirs=(
+            "$HOME/Library/Caches/Homebrew"
+            "$HOME/Library/Logs/Homebrew"
+        )
+    fi
 
     for dir in "${homebrew_dirs[@]}"; do
         if [[ -e "$dir" ]]; then
@@ -619,11 +772,15 @@ main() {
     os="$(detect_os)"
     arch="$(detect_arch)"
 
-    info "检测到系统: ${BOLD}macOS${NC} (${arch})"
+    if [[ "$os" == "macos" ]]; then
+        info "检测到系统: ${BOLD}macOS${NC} (${arch})"
+    else
+        info "检测到系统: ${BOLD}Linux${NC} (${arch})"
+    fi
 
     # 处理命令行参数
     if [[ "${1:-}" == "--uninstall" || "${1:-}" == "-u" ]]; then
-        uninstall_homebrew "$arch"
+        uninstall_homebrew "$arch" "$os"
         exit 0
     fi
 
@@ -631,15 +788,15 @@ main() {
     select_mirror
 
     # 前置检查
-    preflight_check
+    preflight_check "$os"
 
     # 安装 Homebrew
-    install_homebrew "$arch"
+    install_homebrew "$arch" "$os"
 
     # 显示完成信息
     local prefix
-    prefix="$(get_homebrew_prefix "$arch")"
-    show_finish_info "$prefix"
+    prefix="$(get_homebrew_prefix "$arch" "$os")"
+    show_finish_info "$prefix" "$os"
 }
 
 # 运行主流程
