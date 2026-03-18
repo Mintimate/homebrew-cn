@@ -6,6 +6,7 @@ export function getFooter() {
             <div class="footer-links" style="margin-bottom:0">
                 <a href="https://brew.sh/" target="_blank">Homebrew 官网</a>
                 <a href="https://docs.brew.sh/" target="_blank">官方文档</a>
+                <a href="https://docs.brew.sh/Homebrew-on-Linux" target="_blank">Linux 安装指南</a>
                 <a href="https://mirrors.ustc.edu.cn/help/brew.git.html" target="_blank">USTC 镜像帮助</a>
                 <a href="https://mirrors.tuna.tsinghua.edu.cn/help/homebrew/" target="_blank">清华 TUNA 镜像帮助</a>
             </div>

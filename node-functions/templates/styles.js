@@ -88,6 +88,11 @@ body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%;
         .sub-title { font-size: 1.1rem; margin-bottom: 12px; }
         .footer-sub { margin-top: 8px; font-size: .8rem; opacity: .6; }
 
+        .os-tabs { display: flex; gap: 8px; }
+        .os-tab { padding: 8px 20px; border-radius: 10px; border: 1px solid rgba(255,184,77,.35); background: rgba(255,255,255,.65); color: var(--text-muted); font-size: .9rem; font-weight: 600; cursor: pointer; transition: all .25s ease; font-family: inherit; }
+        .os-tab:hover { background: rgba(255,179,71,.15); border-color: rgba(255,140,66,.45); }
+        .os-tab.active { background: linear-gradient(135deg, rgba(255,140,66,.2), rgba(244,180,0,.15)); border-color: var(--accent); color: var(--accent); box-shadow: 0 2px 8px rgba(255,140,66,.18); }
+
         .stats-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 20px; height: 100%; align-items: center; }
         .stat-card { background: rgba(255,255,255,.65); border: 1px solid rgba(255,184,77,.22); border-radius: 12px; padding: 24px; text-align: center; transition: all .3s; height: 100%; display: flex; flex-direction: column; justify-content: center; }
         .stat-card:hover { background: rgba(255,179,71,.18); border-color: rgba(255,140,66,.32); }
@@ -254,6 +259,9 @@ body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%;
         html[data-theme="dark"] .env-list li { background: #2b2118; color: #ffd8ad; border-color: rgba(255, 179, 71, 0.3); }
         html[data-theme="dark"] .copy-btn { background: rgba(33, 26, 21, 0.9); color: #e9c9a5; border-color: rgba(255, 179, 71, 0.35); }
         html[data-theme="dark"] .copy-btn:hover { color: #ffe3c2; }
+        html[data-theme="dark"] .os-tab { background: rgba(36, 28, 22, 0.72); border-color: rgba(255, 179, 71, 0.22); color: var(--text-muted); }
+        html[data-theme="dark"] .os-tab:hover { background: rgba(255,179,71,.12); }
+        html[data-theme="dark"] .os-tab.active { background: linear-gradient(135deg, rgba(255,179,107,.18), rgba(255,209,102,.12)); border-color: var(--accent); color: var(--accent); }
         html[data-theme="dark"] .theme-toggle { background: rgba(28, 24, 37, .88); border-color: rgba(134, 160, 255, .4); box-shadow: 0 6px 14px rgba(88, 114, 220, .22); }
         html[data-theme="dark"] .theme-toggle:hover { box-shadow: 0 10px 22px rgba(96, 128, 255, .35); }
         html[data-theme="dark"] .path-item .path { background: rgba(0, 0, 0, 0.35); color: var(--accent-light); }

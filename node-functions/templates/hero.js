@@ -18,6 +18,6 @@ export function getHero() {
                 </button>
             </div>
             <h1>Homebrew CN 镜像安装</h1>
-            <p class="hero-desc">专为国内用户打造的 Homebrew 一键安装脚本，智能选择最佳镜像源，解决下载慢、安装失败等问题。</p>
+            <p class="hero-desc">专为国内用户打造的 Homebrew 一键安装脚本，支持 macOS 和 Linux，智能选择最佳镜像源，解决下载慢、安装失败等问题。</p>
         </div>`;
 }
