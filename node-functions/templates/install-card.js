@@ -40,8 +40,9 @@ export function getInstallCard() {
 
                 <p class="command-hint">自动适配 macOS (Intel/Apple Silicon) · Linux (x86_64/ARM64) · 脚本运行后可交互选择镜像源</p>
                 <div class="support-links">
-                    <a href="https://ifdian.net/a/mintimate" target="_blank" class="link-afdian">❤ 觉得好用？去爱发电支持一下</a>
-                    <a href="https://space.bilibili.com/355567627" target="_blank" class="link-bilibili">📺 助力 Mintimate 突破 1w 粉丝！</a>
+                    <a href="https://www.bilibili.com/video/BV1AEX9BsELi/" target="_blank" class="link-bilibili">📺 观看视频安装教程</a>
+                    <a href="https://ifdian.net/a/mintimate" target="_blank" class="link-afdian">❤ 去爱发电支持一下</a>
+                    <a href="https://space.bilibili.com/355567627" target="_blank" class="link-bilibili" style="background: rgba(52,152,219,.15); color: #3498db; border-color: rgba(52,152,219,.3);">🚀 助力突破 1w 粉丝！</a>
                 </div>
             </div>`;
 }

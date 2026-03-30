@@ -25,25 +25,34 @@ export function getStepsAndMirrors() {
                 </div>
             </div>
             <div class="card reveal">
-                <div class="card-title">镜像源对比</div>
-                <div class="table-wrap">
-                    <table>
-                        <thead><tr><th>镜像源</th><th>特点</th><th>推荐指数</th></tr></thead>
-                        <tbody>
-                            <tr><td class="td-name">USTC 中科大</td><td>同步频率高，极其稳定</td><td><span class="mirror-tag tag-recommend">⭐⭐⭐⭐⭐</span></td></tr>
-                            <tr><td class="td-name">Aliyun 阿里云</td><td>CDN 加速，下载极快</td><td><span class="mirror-tag tag-fast">⭐⭐⭐⭐⭐</span></td></tr>
-                            <tr><td class="td-name">Tsinghua 清华</td><td>教育网首选，老牌镜像</td><td><span class="mirror-tag tag-edu">⭐⭐⭐⭐</span></td></tr>
-                            <tr id="mirror-egg" style="display:none"><td class="td-name">🎉 Tencent 腾讯云</td><td>隐藏彩蛋！安装时输入 5 选择（完整克隆，速度较慢）</td><td><span class="mirror-tag tag-egg">🥚 彩蛋</span></td></tr>
-                        </tbody>
-                    </table>
+                <div class="card-title">视频教程</div>
+                <div style="position: relative; padding-bottom: 56.25%; height: 0; border-radius: 8px; overflow: hidden; box-shadow: 0 4px 12px rgba(0,0,0,0.1);">
+                    <iframe src="//player.bilibili.com/player.html?isOutside=true&aid=116313569627982&bvid=BV1AEX9BsELi&cid=37079747128&p=1" scrolling="no" border="0" frameborder="no" framespacing="0" allowfullscreen="true" style="position: absolute; top: 0; left: 0; width: 100%; height: 100%;"></iframe>
                 </div>
-                <div style="margin-top:24px">
-                    <div class="card-title sub-title">默认安装路径</div>
-                    <div class="path-grid">
-                        <div class="path-item"><div><span class="arch">Apple Silicon (M1/M2/M3)</span> <span class="note">ARM64 架构</span></div><span class="path">/opt/homebrew</span></div>
-                        <div class="path-item"><div><span class="arch">Intel Mac</span> <span class="note">x86_64 架构</span></div><span class="path">/usr/local</span></div>
-                        <div class="path-item"><div><span class="arch">Linux</span> <span class="note">x86_64 / ARM64</span></div><span class="path">/home/linuxbrew/.linuxbrew</span></div>
-                    </div>
+                <div style="margin-top: 16px; text-align: center;">
+                    <a href="https://www.bilibili.com/video/BV1AEX9BsELi/" target="_blank" class="link-bilibili" style="display: inline-flex; align-items: center; gap: 6px; padding: 8px 16px; border-radius: 8px; text-decoration: none; font-size: .95rem; font-weight: 600; transition: all .2s; color: #fb7299; background: rgba(251,114,153,.15); border: 1px solid rgba(251,114,153,.3);">📺 去 Bilibili 观看高清版</a>
+                </div>
+            </div>
+        </div>
+        <div class="card reveal section">
+            <div class="card-title">镜像源对比</div>
+            <div class="table-wrap">
+                <table>
+                    <thead><tr><th>镜像源</th><th>特点</th><th>推荐指数</th></tr></thead>
+                    <tbody>
+                        <tr><td class="td-name">USTC 中科大</td><td>同步频率高，极其稳定</td><td><span class="mirror-tag tag-recommend">⭐⭐⭐⭐⭐</span></td></tr>
+                        <tr><td class="td-name">Aliyun 阿里云</td><td>CDN 加速，下载极快</td><td><span class="mirror-tag tag-fast">⭐⭐⭐⭐⭐</span></td></tr>
+                        <tr><td class="td-name">Tsinghua 清华</td><td>教育网首选，老牌镜像</td><td><span class="mirror-tag tag-edu">⭐⭐⭐⭐</span></td></tr>
+                        <tr id="mirror-egg" style="display:none"><td class="td-name">🎉 Tencent 腾讯云</td><td>隐藏彩蛋！安装时输入 5 选择（完整克隆，速度较慢）</td><td><span class="mirror-tag tag-egg">🥚 彩蛋</span></td></tr>
+                    </tbody>
+                </table>
+            </div>
+            <div style="margin-top:24px">
+                <div class="card-title sub-title">默认安装路径</div>
+                <div class="path-grid" style="grid-template-columns: repeat(auto-fit, minmax(250px, 1fr));">
+                    <div class="path-item"><div><span class="arch">Apple Silicon (M1/M2/M3)</span> <span class="note">ARM64 架构</span></div><span class="path">/opt/homebrew</span></div>
+                    <div class="path-item"><div><span class="arch">Intel Mac</span> <span class="note">x86_64 架构</span></div><span class="path">/usr/local</span></div>
+                    <div class="path-item"><div><span class="arch">Linux</span> <span class="note">x86_64 / ARM64</span></div><span class="path">/home/linuxbrew/.linuxbrew</span></div>
                 </div>
             </div>
         </div>`;
