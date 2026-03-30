@@ -126,6 +126,10 @@ body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%;
         .tag-recommend { background: rgba(39,174,96,.15); color: var(--green); border: 1px solid rgba(39,174,96,.3); }
         .tag-fast { background: rgba(52,152,219,.15); color: #3498db; border: 1px solid rgba(52,152,219,.3); }
         .tag-edu { background: rgba(243,156,18,.15); color: var(--gold); border: 1px solid rgba(243,156,18,.3); }
+        .tag-egg { background: rgba(155,89,182,.15); color: #9b59b6; border: 1px solid rgba(155,89,182,.3); }
+        #mirror-egg.egg-show { display: table-row !important; animation: eggReveal .6s cubic-bezier(.22,.61,.36,1) forwards; }
+        @keyframes eggReveal { from { opacity: 0; transform: translateX(-20px); } to { opacity: 1; transform: translateX(0); } }
+        html[data-theme="dark"] .tag-egg { background: rgba(187,134,252,.15); color: #bb86fc; border-color: rgba(187,134,252,.3); }
 
         .path-grid { display: grid; grid-template-columns: 1fr; gap: 16px; margin: 16px 0; }
         .path-item { background: rgba(255,255,255,.65); border: 1px solid rgba(255,184,77,.22); border-radius: 12px; padding: 20px; display: flex; align-items: center; justify-content: space-between; }

@@ -33,6 +33,7 @@ export function getStepsAndMirrors() {
                             <tr><td class="td-name">USTC 中科大</td><td>同步频率高，极其稳定</td><td><span class="mirror-tag tag-recommend">⭐⭐⭐⭐⭐</span></td></tr>
                             <tr><td class="td-name">Aliyun 阿里云</td><td>CDN 加速，下载极快</td><td><span class="mirror-tag tag-fast">⭐⭐⭐⭐⭐</span></td></tr>
                             <tr><td class="td-name">Tsinghua 清华</td><td>教育网首选，老牌镜像</td><td><span class="mirror-tag tag-edu">⭐⭐⭐⭐</span></td></tr>
+                            <tr id="mirror-egg" style="display:none"><td class="td-name">🎉 Tencent 腾讯云</td><td>隐藏彩蛋！安装时输入 5 选择（完整克隆，速度较慢）</td><td><span class="mirror-tag tag-egg">🥚 彩蛋</span></td></tr>
                         </tbody>
                     </table>
                 </div>

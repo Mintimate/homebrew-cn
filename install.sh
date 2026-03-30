@@ -257,6 +257,9 @@ select_mirror() {
     echo -n -e "请输入选项 [${GREEN}1${NC}/${GREEN}2${NC}/${GREEN}3${NC}/${GREEN}4${NC}] (默认: 1): "
     read -r mirror_choice
 
+    # 默认使用 shallow clone
+    MIRROR_NO_SHALLOW=false
+
     case "$mirror_choice" in
         2)
             MIRROR_NAME="Aliyun"
@@ -282,6 +285,17 @@ select_mirror() {
             HOMEBREW_API_DOMAIN=""
             HOMEBREW_CASK_GIT_REMOTE=""
             ;;
+        5)
+            # 🎉 隐藏彩蛋：腾讯云镜像源
+            # 腾讯云使用 dumb HTTP 协议，不支持 shallow clone，因此需要完整克隆
+            MIRROR_NAME="Tencent (腾讯云)"
+            BREW_GIT_REMOTE="https://mirrors.cloud.tencent.com/homebrew/brew.git"
+            HOMEBREW_CORE_GIT_REMOTE="https://mirrors.cloud.tencent.com/homebrew/homebrew-core.git"
+            HOMEBREW_BOTTLE_DOMAIN="https://mirrors.cloud.tencent.com/homebrew-bottles"
+            HOMEBREW_API_DOMAIN="https://mirrors.cloud.tencent.com/homebrew-bottles/api"
+            HOMEBREW_CASK_GIT_REMOTE="https://mirrors.cloud.tencent.com/homebrew/homebrew-cask.git"
+            MIRROR_NO_SHALLOW=true
+            ;;
 
         *)
             MIRROR_NAME="USTC"
@@ -294,6 +308,10 @@ select_mirror() {
     esac
 
     echo ""
+    if [[ "$MIRROR_NO_SHALLOW" == true ]]; then
+        echo -e "${BOLD}${CYAN}🎉 彩蛋！你发现了隐藏的腾讯云镜像源！${NC}"
+        warn "腾讯云镜像使用 dumb HTTP 协议，不支持 shallow clone，将使用完整克隆（速度较慢）。"
+    fi
     info "已选择镜像源: ${BOLD}${MIRROR_NAME}${NC}"
 }
 
@@ -375,7 +393,11 @@ install_homebrew() {
             git -C "$homebrew_repo" init -q
             git -C "$homebrew_repo" config remote.origin.url "$BREW_GIT_REMOTE"
             git -C "$homebrew_repo" config remote.origin.fetch "+refs/heads/*:refs/remotes/origin/*"
-            if git -C "$homebrew_repo" fetch --force --depth=1 origin && git -C "$homebrew_repo" reset --hard origin/master; then
+            local fetch_args=(--force origin)
+            if [[ "$MIRROR_NO_SHALLOW" != true ]]; then
+                fetch_args=(--force --depth=1 origin)
+            fi
+            if git -C "$homebrew_repo" fetch "${fetch_args[@]}" && git -C "$homebrew_repo" reset --hard origin/master; then
                 clone_success=true
                 break
             fi
