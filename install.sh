@@ -435,6 +435,15 @@ install_homebrew() {
     # 立即加载环境变量
     eval "$("$prefix/bin/brew" shellenv)"
 
+    # 将镜像源环境变量导出到当前 shell 会话（配置文件中的变量需要 source 后才生效，这里提前设置）
+    if [[ "$MIRROR_NAME" != "官方源" ]]; then
+        export HOMEBREW_BREW_GIT_REMOTE="$BREW_GIT_REMOTE"
+        export HOMEBREW_CORE_GIT_REMOTE="$HOMEBREW_CORE_GIT_REMOTE"
+        export HOMEBREW_BOTTLE_DOMAIN="$HOMEBREW_BOTTLE_DOMAIN"
+        export HOMEBREW_API_DOMAIN="$HOMEBREW_API_DOMAIN"
+        [[ -n "$HOMEBREW_CASK_GIT_REMOTE" ]] && export HOMEBREW_CASK_GIT_REMOTE="$HOMEBREW_CASK_GIT_REMOTE"
+    fi
+
     # 更新
     info "运行 brew update..."
     "$prefix/bin/brew" update --force --quiet 2>/dev/null || true
