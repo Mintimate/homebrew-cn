@@ -353,15 +353,47 @@ install_homebrew() {
     info "安装目录: $prefix"
     echo ""
 
-    # 创建安装目录
-    if [[ ! -d "$prefix" ]]; then
-        info "创建 Homebrew 安装目录 $prefix ..."
-        if [[ "$os" == "linux" ]]; then
+    # 创建安装目录并确保权限正确
+    if [[ "$os" == "linux" ]]; then
+        if [[ ! -d "$prefix" ]]; then
+            info "创建 Homebrew 安装目录 $prefix ..."
             sudo mkdir -p "$prefix"
-            sudo chown -R "$(whoami)" "$prefix"
-        else
+        fi
+        sudo chown -R "$(whoami)" "$prefix"
+    elif [[ "$arch" == "arm64" ]]; then
+        # Apple Silicon: /opt/homebrew 整个目录归 Homebrew 所有
+        if [[ ! -d "$prefix" ]]; then
+            info "创建 Homebrew 安装目录 $prefix ..."
             sudo mkdir -p "$prefix"
-            sudo chown -R "$(whoami):admin" "$prefix"
+        fi
+        sudo chown -R "$(whoami):admin" "$prefix"
+    else
+        # Intel Mac: /usr/local 通常已存在，但子目录可能没有写入权限
+        # 需要确保 Homebrew 所需的子目录存在且当前用户可写
+        local brew_dirs=(
+            "$prefix/bin"
+            "$prefix/etc"
+            "$prefix/include"
+            "$prefix/lib"
+            "$prefix/sbin"
+            "$prefix/share"
+            "$prefix/var"
+            "$prefix/opt"
+            "$prefix/Cellar"
+            "$prefix/Caskroom"
+            "$prefix/Homebrew"
+            "$prefix/Frameworks"
+        )
+        local dirs_to_fix=()
+        for dir in "${brew_dirs[@]}"; do
+            if [[ ! -d "$dir" ]] || [[ ! -w "$dir" ]]; then
+                dirs_to_fix+=("$dir")
+            fi
+        done
+        if [[ ${#dirs_to_fix[@]} -gt 0 ]]; then
+            info "创建/修复 Homebrew 安装目录权限 ($prefix) ..."
+            sudo mkdir -p "${dirs_to_fix[@]}"
+            sudo chown "$(whoami):admin" "${dirs_to_fix[@]}"
         fi
     fi
 
