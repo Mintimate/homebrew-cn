@@ -1,0 +1,9 @@
+{
+  "type": "module",
+  "scripts": {
+    "build": "bash build.sh"
+  },
+  "dependencies": {
+    "@edgeone/pages-blob": "latest"
+  }
+}
