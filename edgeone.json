@@ -1,9 +1,20 @@
 {
+  "buildCommand": "npm run build",
+  "outputDirectory": "",
   "redirects": [
     {
       "source": "/install.sh",
       "destination": "/install",
       "statusCode": 301
     }
-  ]
+  ],
+  "cloudFunctions": {
+    "nodejs": {
+      "includeFiles": []
+    }
+  },
+  "agents": {
+    "framework": "openai-agents-sdk",
+    "externalNodeModules": ["openai", "@openai/agents"]
+  }
 }

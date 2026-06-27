@@ -37,6 +37,44 @@ export function renderPage() {
         ${getFooter()}
     </div>
 
+    <!-- AI Chat Widget -->
+    <div id="ai-chat-widget" class="ai-chat-widget">
+        <!-- Floating Toggle Button -->
+        <button id="ai-chat-toggle" class="ai-chat-toggle" aria-label="打开 AI 助手" title="打开 AI 助手">
+            <span class="chat-icon">AI</span>
+            <span class="chat-badge">助手</span>
+        </button>
+
+        <!-- Chat Window -->
+        <div id="ai-chat-window" class="ai-chat-window" style="display: none;">
+            <div class="chat-header">
+                <div class="header-info">
+                    <span class="header-title">homebrew-cn 助手</span>
+                    <span class="header-status"><span class="status-dot"></span>在线服务</span>
+                </div>
+                <button id="ai-chat-close" class="chat-close-btn" aria-label="关闭">&times;</button>
+            </div>
+
+            <div id="chat-messages" class="chat-messages">
+                <div class="message system">
+                    <div class="msg-content">
+                        你好！我是 <strong>homebrew-cn 智能助手</strong>。<br><br>我可以帮你快速安装 Homebrew、进行国内镜像源在线检测，或者解决各种安装/环境变量问题。
+                    </div>
+                </div>
+                <div class="quick-actions">
+                    <button class="action-btn" onclick="sendQuickAction('运行在线镜像检测')">运行在线镜像检测</button>
+                    <button class="action-btn" onclick="sendQuickAction('Mac 找不到 brew 命令')">Mac 找不到 brew 命令</button>
+                    <button class="action-btn" onclick="sendQuickAction('如何恢复官方源？')">如何恢复官方源？</button>
+                </div>
+            </div>
+
+            <div class="chat-input-area">
+                <textarea id="chat-input" placeholder="输入你的问题，按回车发送..." rows="1"></textarea>
+                <button id="chat-send-btn" class="chat-send-btn" disabled>发送</button>
+            </div>
+        </div>
+    </div>
+
     ${getClientScript()}
 </body>
 </html>`;
