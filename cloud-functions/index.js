@@ -8,7 +8,7 @@ export function onRequest(context) {
   return new Response(html, {
     headers: {
       'Content-Type': 'text/html; charset=utf-8',
-      'Cache-Control': 'public, max-age=300, s-maxage=600',
+      'Cache-Control': 'no-cache, no-store, must-revalidate',
     },
   });
 }
