@@ -1,4 +1,4 @@
-export function buildSystemPrompt(userMessage: string): string {
+export function buildSystemPrompt(userMessage: string, extraGuidance?: string): string {
   const canonicalGuidance = inferCanonicalGuidance(userMessage);
 
   return [
@@ -38,18 +38,21 @@ export function buildSystemPrompt(userMessage: string): string {
     '   - Linux default: `~/.bashrc` (or `~/.zshrc`)',
     '',
     'TOOL USE POLICY WHEN TOOLS ARE AVAILABLE:',
-    '- When the user explicitly asks to run diagnostics (e.g. "运行在线镜像检测", "检测镜像源", "哪个镜像最快"), you MUST call the `diagnose` tool IMMEDIATELY. Do NOT output any introductory text such as "正在为您运行在线镜像检测..." before calling the tool. Output only happens after the tool returns results.',
-    '- If the user complains about slow speeds, connection failures, or asks which mirror is currently best, you MUST call `diagnose` to show real-time progress. The mirrors to check are:',
+    '- When the user explicitly asks to run diagnostics (e.g. "运行在线镜像检测", "检测镜像源", "哪个镜像最快"), you MUST call the `mirror_probe_deep` tool IMMEDIATELY. Do NOT output any introductory text such as "正在为您运行在线镜像检测..." before calling the tool. Output only happens after the tool returns results.',
+    '- If the user complains about slow speeds, connection failures, or asks which mirror is currently best, you MUST call `mirror_probe_deep` to show real-time progress. The mirrors to check are:',
     '  1. "Official (官方源)": "https://github.com/Homebrew/brew.git"',
     '  2. "USTC (中科大)": "https://mirrors.ustc.edu.cn/brew.git"',
     '  3. "TUNA (清华大学)": "https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"',
     '  4. "Aliyun (阿里云)": "https://mirrors.aliyun.com/homebrew/brew.git"',
     '  5. "Tencent (腾讯云)": "https://mirrors.cloud.tencent.com/homebrew/brew.git"',
-    '  Call `diagnose` without any arguments to check all mirrors in parallel; the tool will return a complete report with latency, SSL status, commit hash, and sync status for each mirror.',
-    '- If the user provides an error message, shell profile content, or git config output, call `analyze` to parse it and locate structural issues.',
-    '- If an issue is found in the local configuration (such as missing PATH or broken Git url rules), call `fix` to create a safe command block that fixes the issue.',
+    '  Call `mirror_probe_deep` without any arguments to check all mirrors in parallel; the tool will return a complete report with DNS, TCP, TLS, HTTP, git latency, commit hash, and sync status for each mirror.',
+    '- If the user provides an error message, shell profile content, or git config output, call `analyze` to parse it and locate structural issues, except for the special macOS `brew` not found troubleshooting flow described below.',
+    '- If an issue is found in the local configuration (such as missing PATH or broken Git url rules), call `fix` to create a safe command block that fixes the issue, except for the special macOS `brew` not found troubleshooting flow described below.',
+    '- If the user asks whether a package/app can be installed with Homebrew, asks for a `brew install` command, or compares formula vs cask, call `formula_check` to query the Homebrew JSON API index before answering.',
+    '- If the user says macOS cannot find the `brew` command, guide them through read-only troubleshooting commands over multiple turns. Do not ask them to upload files, and do not immediately generate persistent repair commands. They may paste terminal text or paste a screenshot, but prefer copied terminal text for accuracy.',
     '- When providing terminal commands, always explain what they do and advise the user to back up their profile configurations.',
     canonicalGuidance ? `\nCanonical guidance for this request:\n${canonicalGuidance}` : '',
+    extraGuidance ? `\nAdditional scenario guidance:\n${extraGuidance}` : '',
   ].join('\n');
 }
 
@@ -72,14 +75,14 @@ function inferCanonicalGuidance(message: string): string {
     return [
       'The user is on Apple Silicon macOS and brew command is not found.',
       'Explain that Apple Silicon Macs install Homebrew to `/opt/homebrew` instead of `/usr/local`.',
-      'This requires adding the brew binary to their PATH in `~/.zshrc`.',
-      'Provide the exact recovery commands:',
+      'Do not immediately persist changes to `~/.zshrc` or generate repair commands.',
+      'First ask for read-only troubleshooting output. If the user already pasted output showing `Homebrew <version>`, `/opt/homebrew/bin/brew`, or PATH containing `/opt/homebrew/bin`, state that the current terminal is already OK.',
+      'Only provide temporary validation commands if the output is still inconclusive:',
       '```zsh',
-      '# Add Homebrew to PATH for the current user',
-      'echo \'eval "$(/opt/homebrew/bin/brew shellenv)"\' >> ~/.zshrc',
-      'source ~/.zshrc',
+      'command -v brew || echo "brew-not-in-PATH"',
+      'brew --version',
+      'echo "$PATH"',
       '```',
-      'Advise them to run `brew --version` after executing these commands to verify.',
     ].join('\n');
   }
 

@@ -7,6 +7,7 @@ export interface AgentEnv {
   AI_GATEWAY_API_KEY: string;
   AI_GATEWAY_BASE_URL: string;
   AI_GATEWAY_MODEL?: string;
+  AI_GATEWAY_ENABLE_THINKING?: string;
 }
 
 export function getAgentEnv(contextEnv: Record<string, string | undefined> | undefined): AgentEnv {
@@ -20,6 +21,7 @@ export function getAgentEnv(contextEnv: Record<string, string | undefined> | und
     AI_GATEWAY_API_KEY: source.AI_GATEWAY_API_KEY!,
     AI_GATEWAY_BASE_URL: normalizeOpenAIBaseUrl(source.AI_GATEWAY_BASE_URL!),
     AI_GATEWAY_MODEL: source.AI_GATEWAY_MODEL,
+    AI_GATEWAY_ENABLE_THINKING: source.AI_GATEWAY_ENABLE_THINKING,
   };
 }
 
@@ -33,14 +35,15 @@ export function createGatewayClient(env: AgentEnv) {
     apiKey: env.AI_GATEWAY_API_KEY,
     baseURL: env.AI_GATEWAY_BASE_URL,
   });
-  wrapOpenAIClient(client);
+  wrapOpenAIClient(client, env);
   return client;
 }
 
-function wrapOpenAIClient(client: OpenAI) {
+function wrapOpenAIClient(client: OpenAI, env: AgentEnv) {
   const originalCreate = client.chat.completions.create.bind(client.chat.completions);
   
   client.chat.completions.create = async function (params: any, options: any): Promise<any> {
+    params = withVllmThinkingParams(params, env);
     const response = await originalCreate(params, options);
     
     if (params.stream) {
@@ -58,24 +61,31 @@ function wrapOpenAIClient(client: OpenAI) {
               const chunk = result.value;
               const choice = chunk.choices?.[0];
               const delta = choice?.delta;
-              if (delta?.tool_calls) {
-                for (const tc of delta.tool_calls) {
-                  const index = tc.index;
-                  if (tc.function?.name) {
-                    if (toolCallNames[index] === undefined) {
-                      toolCallNames[index] = '';
-                      toolCallSent[index] = '';
+              if (delta) {
+                // vLLM/Qwen3 的思考内容字段是 reasoning_content，SDK 只认 reasoning。
+                // 映射到 reasoning，让 SDK 内部能累积并在 response_done 里输出 reasoning item。
+                if (delta.reasoning_content && !delta.reasoning) {
+                  delta.reasoning = delta.reasoning_content;
+                }
+                if (delta.tool_calls) {
+                   for (const tc of delta.tool_calls) {
+                    const index = tc.index;
+                    if (tc.function?.name) {
+                      if (toolCallNames[index] === undefined) {
+                        toolCallNames[index] = '';
+                        toolCallSent[index] = '';
+                      }
+                      toolCallNames[index] += tc.function.name;
+
+                      const rawName = toolCallNames[index];
+                      const cleanName = cleanRepeatedToolName(rawName);
+                      const sent = toolCallSent[index];
+
+                      const fragment = cleanName.slice(sent.length);
+                      tc.function.name = fragment;
+
+                      toolCallSent[index] = cleanName;
                     }
-                    toolCallNames[index] += tc.function.name;
-                    
-                    const rawName = toolCallNames[index];
-                    const cleanName = cleanRepeatedToolName(rawName);
-                    const sent = toolCallSent[index];
-                    
-                    const fragment = cleanName.slice(sent.length);
-                    tc.function.name = fragment;
-                    
-                    toolCallSent[index] = cleanName;
                   }
                 }
               }
@@ -98,6 +108,18 @@ function wrapOpenAIClient(client: OpenAI) {
       return response;
     }
   } as any;
+}
+
+function withVllmThinkingParams(params: any, env: AgentEnv) {
+  if (!params || typeof params !== 'object') return params;
+  const enableThinking = env.AI_GATEWAY_ENABLE_THINKING !== 'false';
+  return {
+    ...params,
+    chat_template_kwargs: {
+      ...(params.chat_template_kwargs ?? {}),
+      enable_thinking: params.chat_template_kwargs?.enable_thinking ?? enableThinking,
+    },
+  };
 }
 
 function cleanRepeatedToolName(name: string): string {
