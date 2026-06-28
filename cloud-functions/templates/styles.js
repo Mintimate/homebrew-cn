@@ -566,7 +566,6 @@ export function getStyles() {
             line-height: 1.6;
             word-wrap: break-word;
             width: 100%;
-            box-sizing: border-box;
         }
         
         /* Inside agent text content, style markdown */
@@ -963,7 +962,7 @@ export function getStyles() {
             cursor: pointer;
             transition: all 0.2s;
             margin-top: 12px;
-            font-family: var(--font-sans);
+            font-family: inherit;
             user-select: none;
         }
         .tool-copy-btn:hover {
@@ -1851,9 +1850,6 @@ export function getStyles() {
             display: inline-block;
             flex-shrink: 0;
         }
-        @keyframes spin {
-            to { transform: rotate(360deg); }
-        }
 
         /* ─── 终端和诊断工具 亮色模式适配 ─── */
         html[data-theme="light"] .terminal-dashboard {
@@ -2018,12 +2014,6 @@ export function getStyles() {
             background: #e8e2dd;
             border-bottom-color: rgba(220, 122, 28, 0.06);
             color: #5c544d;
-        }
-        html[data-theme="light"] .code-copy-btn {
-            color: #8a7a6b;
-        }
-        html[data-theme="light"] .code-copy-btn:hover {
-            color: var(--accent);
         }
 
         /* Thinking & Tool Logs */

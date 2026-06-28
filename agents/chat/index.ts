@@ -75,7 +75,7 @@ export async function onRequest(context: any) {
         }
 
         if (intent.route === 'model_identity') {
-          yield* runDirectModelIdentity(context.env);
+          yield* runDirectModelIdentity();
           return;
         }
 
@@ -399,7 +399,7 @@ async function* runDirectRestoreOfficial() {
   });
 }
 
-async function* runDirectModelIdentity(env: Record<string, string | undefined> | undefined) {
+async function* runDirectModelIdentity() {
   yield sseEvent({
     type: 'ai_response',
     content: `我是 Homebrew Agent，由 [Mintimate](https://www.mintimate.cn) 开发。我的职责主要是协助处理 Homebrew 安装、镜像源配置、软件包查询以及本地环境诊断排查。`,
