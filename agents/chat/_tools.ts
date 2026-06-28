@@ -94,6 +94,8 @@ export const HOMEBREW_MIRROR_TARGETS: Record<string, string> = {
   'Tencent (腾讯云)': 'https://mirrors.cloud.tencent.com/homebrew/brew.git',
 };
 
+const TENCENT_DUMB_HTTP_NOTE = '腾讯云 Homebrew Git 镜像使用 dumb HTTP 协议，不支持 shallow clone；安装脚本选择它时会自动使用完整克隆。';
+
 export interface DiagnoseOptions extends ToolOptions {
   targets?: Record<string, string>;
   onProgress?: (result: MirrorDiagnosticResult, report: MirrorDiagnosticResult[]) => void | Promise<void>;
@@ -165,6 +167,18 @@ function mirrorOrder(name: string) {
   return index === -1 ? keys.length : index;
 }
 
+function isDumbHttpMirror(name: string, url?: string) {
+  return name.includes('Tencent') || name.includes('腾讯云') || !!url?.includes('mirrors.cloud.tencent.com');
+}
+
+function getGitRefsEndpoint(name: string, url: string) {
+  return `${url}/info/refs${isDumbHttpMirror(name, url) ? '' : '?service=git-upload-pack'}`;
+}
+
+function getMirrorNetworkNote(name: string, url?: string) {
+  return isDumbHttpMirror(name, url) ? TENCENT_DUMB_HTTP_NOTE : null;
+}
+
 function updateSyncStatus(report: MirrorDiagnosticResult[]) {
   const officialReport = report.find((r) => r.name === 'Official (官方源)');
   const officialHash = officialReport?.commit_hash || null;
@@ -211,6 +225,7 @@ function createFailedResult(name: string, error: string): MirrorDiagnosticResult
     commit_hash: null,
     error,
     sync_status: 'failed',
+    network_note: getMirrorNetworkNote(name),
   };
 }
 
@@ -229,6 +244,7 @@ async function checkTargetWithFetch(
     error: null,
     sync_status: 'failed',
     method: 'edge_fetch',
+    network_note: getMirrorNetworkNote(name, url),
   };
 
   const controller = new AbortController();
@@ -237,7 +253,7 @@ async function checkTargetWithFetch(
   signal?.addEventListener('abort', abortListener, { once: true });
 
   try {
-    const response = await fetch(`${url}/info/refs?service=git-upload-pack`, {
+    const response = await fetch(getGitRefsEndpoint(name, url), {
       headers: { 'User-Agent': 'git/2.0.0' },
       signal: controller.signal,
     });
@@ -317,20 +333,23 @@ async function checkTargetWithDeepSandbox(
 function buildMirrorProbePython(name: string, url: string) {
   return `
 import json, re, ssl, time, urllib.request
+name = ${JSON.stringify(name)}
 url = ${JSON.stringify(url)}
+refs_url = ${JSON.stringify(getGitRefsEndpoint(name, url))}
 result = {
-  "name": ${JSON.stringify(name)},
+  "name": name,
   "latency_ms": 9999,
   "ssl_ok": False,
   "http_status": 0,
   "commit_hash": None,
   "error": None,
-  "sync_status": "failed"
+  "sync_status": "failed",
+  "network_note": ${JSON.stringify(getMirrorNetworkNote(name, url))}
 }
 start = time.time()
 try:
   ctx = ssl.create_default_context()
-  req = urllib.request.Request(url + "/info/refs?service=git-upload-pack", headers={"User-Agent": "git/2.0.0"})
+  req = urllib.request.Request(refs_url, headers={"User-Agent": "git/2.0.0"})
   with urllib.request.urlopen(req, timeout=4, context=ctx) as response:
     content = response.read().decode("utf-8", errors="ignore")
     result["latency_ms"] = int((time.time() - start) * 1000)
@@ -352,6 +371,7 @@ import json, re, socket, ssl, subprocess, time, urllib.parse, urllib.request
 
 name = ${JSON.stringify(name)}
 url = ${JSON.stringify(url)}
+refs_url = ${JSON.stringify(getGitRefsEndpoint(name, url))}
 parsed = urllib.parse.urlparse(url)
 host = parsed.hostname or ""
 port = parsed.port or (443 if parsed.scheme == "https" else 80)
@@ -372,6 +392,7 @@ result = {
   "git_ok": False,
   "git_error": None,
   "ip": None,
+  "network_note": ${JSON.stringify(getMirrorNetworkNote(name, url))},
 }
 
 def elapsed_ms(start):
@@ -403,7 +424,7 @@ try:
     sock.close()
 
   t = time.time()
-  req = urllib.request.Request(url + "/info/refs?service=git-upload-pack", headers={"User-Agent": "git/2.0.0"})
+  req = urllib.request.Request(refs_url, headers={"User-Agent": "git/2.0.0"})
   with urllib.request.urlopen(req, timeout=6) as response:
     body = response.read().decode("utf-8", errors="ignore")
     result["latency_ms"] = elapsed_ms(t)
