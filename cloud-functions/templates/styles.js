@@ -788,6 +788,7 @@ body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%;
         .agent-bubble {
             flex: 1;
             min-width: 0;
+            max-width: 100%;
             display: flex;
             flex-direction: column;
             gap: 6px;
@@ -804,6 +805,8 @@ body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%;
             line-height: 1.7;
             word-break: break-word;
             color: #3d2f1d;
+            min-width: 0;
+            max-width: 100%;
         }
 
         html[data-theme="dark"] .agent-text-content {
@@ -822,6 +825,8 @@ body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%;
             display: flex;
             flex-direction: column;
             gap: 5px;
+            min-width: 0;
+            max-width: 100%;
         }
 
         .thinking-header {
@@ -847,7 +852,6 @@ body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%;
         .thinking-content {
             font-size: 13px;
             color: #7c5a2f;
-            white-space: pre-wrap;
             word-break: break-word;
             line-height: 1.6;
             transition: all 0.2s ease;
@@ -857,6 +861,21 @@ body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%;
             background: rgba(255, 179, 71, 0.1);
             max-height: 112px;
             overflow-y: auto;
+        }
+
+        .thinking-content p,
+        .thinking-content ul,
+        .thinking-content ol {
+            margin: 4px 0;
+        }
+
+        .thinking-content ul,
+        .thinking-content ol {
+            padding-left: 18px;
+        }
+
+        .thinking-content code {
+            font-size: 12px;
         }
 
         html[data-theme="dark"] .thinking-content {
@@ -908,19 +927,21 @@ body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%;
 
         /* ═══ Tool Call Log 卡片（✅ 工具执行成功 + 结果框）═══ */
         .tool-call-log {
-            background: #f9fafb;
-            border: 1px solid #e5e7eb;
+            background: rgba(247, 240, 228, .58);
+            border: 1px solid rgba(116, 92, 57, .13);
             border-radius: 8px;
-            padding: 10px 12px;
+            padding: 8px 10px;
             display: flex;
             flex-direction: column;
-            gap: 6px;
+            gap: 5px;
             margin: 2px 0;
+            min-width: 0;
+            max-width: 100%;
         }
 
         html[data-theme="dark"] .tool-call-log {
-            background: rgba(30, 27, 24, 0.6);
-            border-color: #3f3a35;
+            background: rgba(32, 27, 22, 0.52);
+            border-color: rgba(255, 179, 107, .16);
         }
 
         .tool-call-header {
@@ -959,37 +980,64 @@ body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%;
         .tool-call-output {
             font-family: 'SF Mono', 'Fira Code', 'Cascadia Code', Consolas, monospace;
             font-size: 11px;
-            background: rgba(0, 0, 0, 0.15);
-            border: 1px solid #e5e7eb;
+            background: rgba(255, 255, 255, 0.58);
+            border: 1px solid rgba(116, 92, 57, .13);
             border-radius: 6px;
-            padding: 8px;
+            padding: 7px 8px;
             color: #4b5563;
             overflow-x: auto;
             max-height: 120px;
             white-space: pre-wrap;
-            word-break: break-all;
+            word-break: normal;
+            overflow-wrap: anywhere;
             tab-size: 2;
+            min-width: 0;
+            max-width: 100%;
         }
 
         .tool-call-args {
-            display: grid;
-            gap: 4px;
+            display: block;
+            min-width: 0;
         }
 
+        .tool-call-args summary,
         .tool-call-args-title {
             font-size: 11px;
             color: #9ca3af;
             font-weight: 600;
+            cursor: pointer;
+            list-style: none;
+        }
+
+        .tool-call-args summary::-webkit-details-marker {
+            display: none;
         }
 
         .tool-call-args-code {
-            margin: 0;
+            margin: 6px 0 0;
+        }
+
+        .tool-call-output.compact-summary {
+            font-family: inherit;
+            font-size: 12px;
+            line-height: 1.55;
+            max-height: none;
+            white-space: normal;
+            word-break: normal;
+            overflow-wrap: anywhere;
+            background: rgba(255, 179, 71, .08);
+            color: #6b5a44;
         }
 
         html[data-theme="dark"] .tool-call-output {
-            background: rgba(0, 0, 0, 0.35);
-            border-color: #3f3a35;
+            background: rgba(11, 10, 9, 0.34);
+            border-color: rgba(255, 179, 107, .13);
             color: #d1d5db;
+        }
+
+        html[data-theme="dark"] .tool-call-output.compact-summary {
+            background: rgba(255, 179, 107, .08);
+            color: #cbbca8;
         }
 
         /* 工具卡片内的富内容区域（diagnose 表格 / analyze 问题卡片） */
@@ -1344,14 +1392,18 @@ body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%;
             display: none;
         }
 
+        .agent-text-content .command-box,
         .message.system .command-box,
         .tool-panel .command-box {
             white-space: pre-wrap;
             overflow-x: auto;
             word-break: normal;
             overflow-wrap: anywhere;
+            max-width: 100%;
+            box-sizing: border-box;
         }
 
+        .agent-text-content pre.code-snippet,
         .message.system pre.code-snippet {
             position: relative;
             margin: 12px 0;
@@ -1361,8 +1413,12 @@ body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%;
             color: #ffe2bd;
             border-radius: 8px;
             box-shadow: inset 0 1px 0 rgba(255,255,255,.05);
+            max-width: 100%;
+            box-sizing: border-box;
+            overflow-x: auto;
         }
 
+        .agent-text-content pre.code-snippet::before,
         .message.system pre.code-snippet::before {
             content: attr(data-lang);
             position: absolute;
@@ -1383,6 +1439,7 @@ body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%;
             letter-spacing: .04em;
         }
 
+        .agent-text-content pre.code-snippet code,
         .message.system pre.code-snippet code,
         .tool-panel .command-box code {
             display: block;
@@ -1394,14 +1451,18 @@ body::before { content: ''; position: fixed; top: -50%; left: -50%; width: 200%;
             font-size: .9rem;
             line-height: 1.65;
             white-space: inherit;
+            min-width: 0;
+            max-width: 100%;
         }
 
+        html[data-theme="light"] .agent-text-content pre.code-snippet,
         html[data-theme="light"] .message.system pre.code-snippet {
             background: #fff6e7;
             color: #6d3b08;
             border-color: rgba(255, 184, 77, .42);
         }
 
+        html[data-theme="light"] .agent-text-content pre.code-snippet::before,
         html[data-theme="light"] .message.system pre.code-snippet::before {
             background: rgba(255, 184, 77, .14);
             color: #9a5a12;
