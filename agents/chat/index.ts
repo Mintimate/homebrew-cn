@@ -1,5 +1,5 @@
 import { Agent, run, type Session } from '@openai/agents';
-import { createGatewayModel, getAgentEnv } from '../_model';
+import { createGatewayClient, createGatewayModel, getAgentEnv, resolveGatewayModelName } from '../_model';
 import { createLogger, createSSEResponse, jsonResponse, sseEvent, truncateText } from '../_shared';
 import { buildSystemPrompt, buildUserInput } from './_prompt';
 import {
@@ -57,6 +57,11 @@ export async function onRequest(context: any) {
           return;
         }
 
+        if (intent.route === 'restore_official') {
+          yield* runDirectRestoreOfficial();
+          return;
+        }
+
         if (intent.route === 'mirror_probe_deep') {
           yield* runDirectDiagnostics({ sandbox: context.sandbox, signal });
           return;
@@ -84,50 +89,65 @@ export async function onRequest(context: any) {
           return;
         }
 
-        // 并行启动 session 加载（KV 读取）与同步准备工作，减少串行等待
+        const env = getAgentEnv(context.env);
+        const systemPrompt = buildSystemPrompt(message);
+        const userInput = buildUserInput(message, combinedContext);
+
+        const allowedTools = getAllowedTools(message, combinedContext);
+        const hasTools = allowedTools.length > 0;
+        const traceSummary = getTraceSummary(message, combinedContext, hasTools);
+
+        const enableThinking =
+          context.env?.AI_GATEWAY_ENABLE_THINKING !== 'false' &&
+          needsThinking(message, combinedContext);
+
+        yield sseEvent({ type: 'thinking', content: '正在分析你的问题…' });
+        if (traceSummary) {
+          yield sseEvent({ type: 'thinking', content: traceSummary });
+        }
+
+        if (!hasTools) {
+          yield* runDirectGatewayChat({
+            env,
+            systemPrompt,
+            userInput,
+            enableThinking,
+            signal,
+          });
+          return;
+        }
+
+        const tools = createHomebrewTools({
+          env: context.env ?? {},
+          signal,
+          allowedTools,
+          sandbox: needsSandboxTool(message) ? context.sandbox : undefined,
+        });
+
+        // 只有工具路径需要 session adapter；常规问答直连上游，避免额外等待。
         const sessionPromise: Promise<Session | undefined> = (
           context.store && conversationId
             ? Promise.resolve(context.store.openaiSession(conversationId))
             : Promise.resolve(undefined)
         );
 
-        const env = getAgentEnv(context.env);
-        const systemPrompt = buildSystemPrompt(message);
-        const userInput = buildUserInput(message, combinedContext);
-        
-        const tools = createHomebrewTools({
-          env: context.env ?? {},
-          signal,
-          allowedTools: getAllowedTools(message, combinedContext),
-          sandbox: needsSandboxTool(message) ? context.sandbox : undefined,
-        });
-        const hasTools = tools.length > 0;
-        const traceSummary = getTraceSummary(message, combinedContext, hasTools);
-
         const agent = new Agent({
           name: 'homebrew-cn Agent',
           instructions: systemPrompt,
           model: createGatewayModel(env),
           modelSettings: {
-            parallelToolCalls: hasTools,
+            parallelToolCalls: true,
             providerData: {
               chat_template_kwargs: {
-                enable_thinking:
-                  context.env?.AI_GATEWAY_ENABLE_THINKING !== 'false' &&
-                  needsThinking(message, combinedContext),
+                enable_thinking: enableThinking,
               },
             },
           },
           tools,
         });
 
-        // 等待 session 加载（已并行，通常此时已完成）
+        // 等待工具路径的 session 加载。
         const session = await sessionPromise;
-
-        yield sseEvent({ type: 'thinking', content: '正在分析你的问题…' });
-        if (traceSummary) {
-          yield sseEvent({ type: 'thinking', content: traceSummary });
-        }
 
         // 4. Run Agent Loop and stream events
         const result = await run(agent, userInput, {
@@ -166,6 +186,7 @@ export async function onRequest(context: any) {
 
 type IntentRoute =
   | 'model_identity'
+  | 'restore_official'
   | 'mirror_probe_deep'
   | 'formula_check'
   | 'brew_missing'
@@ -189,6 +210,16 @@ function classifyIntent(message: string, extraContext?: string): IntentClassific
       needs_sandbox: false,
       route: 'model_identity',
       reason: '用户询问当前助手或模型身份，属于 homebrew-cn Agent 自身说明，无需沙盒。',
+    };
+  }
+
+  if (isResetOfficialIntent(message)) {
+    return {
+      ok: true,
+      is_homebrew_related: true,
+      needs_sandbox: false,
+      route: 'restore_official',
+      reason: '用户请求恢复 Homebrew 官方源，使用固定官方仓库地址直接生成命令，不需要沙盒或模型等待。',
     };
   }
 
@@ -251,12 +282,90 @@ function classifyIntent(message: string, extraContext?: string): IntentClassific
   };
 }
 
+async function* runDirectRestoreOfficial() {
+  yield sseEvent({
+    type: 'thinking',
+    content: '步骤 1：识别为恢复官方源请求；步骤 2：无需联网测速或沙盒；步骤 3：直接使用 Homebrew 官方仓库地址生成恢复命令。',
+  });
+
+  yield sseEvent({
+    type: 'ai_response',
+    content: [
+      '可以。恢复官方源主要做两件事：把 Homebrew 的 Git 远程地址切回 GitHub，并清理 shell 配置里的镜像环境变量。',
+      '',
+      '先执行这些命令：',
+      '',
+      '```bash',
+      'git -C "$(brew --repo)" remote set-url origin https://github.com/Homebrew/brew',
+      '',
+      'if [ -d "$(brew --repo)/Library/Taps/homebrew/homebrew-core" ]; then',
+      '  git -C "$(brew --repo)/Library/Taps/homebrew/homebrew-core" remote set-url origin https://github.com/Homebrew/homebrew-core',
+      'fi',
+      '',
+      'if [ -d "$(brew --repo)/Library/Taps/homebrew/homebrew-cask" ]; then',
+      '  git -C "$(brew --repo)/Library/Taps/homebrew/homebrew-cask" remote set-url origin https://github.com/Homebrew/homebrew-cask',
+      'fi',
+      '',
+      'unset HOMEBREW_BOTTLE_DOMAIN HOMEBREW_API_DOMAIN',
+      'brew update',
+      '```',
+      '',
+      '注意：`unset` 只对当前终端生效。如果之前在 `~/.zshrc`、`~/.bashrc` 或 `~/.bash_profile` 里写过 `HOMEBREW_BOTTLE_DOMAIN`、`HOMEBREW_API_DOMAIN`，需要把对应行删掉后重新打开终端。',
+    ].join('\n'),
+  });
+}
+
 async function* runDirectModelIdentity(env: Record<string, string | undefined> | undefined) {
   const model = env?.AI_GATEWAY_MODEL || '@makers/deepseek-v4-flash';
   yield sseEvent({
     type: 'ai_response',
     content: `我是 homebrew-cn Agent，当前通过 EdgeOne Makers AI Gateway 调用的模型是 \`${model}\`。我的职责主要是处理 Homebrew 安装、镜像源、软件包安装查询和本地环境排查。`,
   });
+}
+
+async function* runDirectGatewayChat(options: {
+  env: ReturnType<typeof getAgentEnv>;
+  systemPrompt: string;
+  userInput: string;
+  enableThinking: boolean;
+  signal?: AbortSignal;
+}) {
+  const client = createGatewayClient(options.env);
+  const stream = await client.chat.completions.create({
+    model: resolveGatewayModelName(options.env),
+    messages: [
+      { role: 'system', content: options.systemPrompt },
+      { role: 'user', content: options.userInput },
+    ],
+    stream: true,
+    stream_options: { include_usage: true },
+    chat_template_kwargs: {
+      enable_thinking: options.enableThinking,
+    },
+  } as any, { signal: options.signal } as any) as unknown as AsyncIterable<any>;
+
+  let usage: any = null;
+  for await (const chunk of stream) {
+    if (options.signal?.aborted) break;
+    const delta = chunk.choices?.[0]?.delta;
+    const reasoning = delta?.reasoning_content ?? delta?.reasoning;
+    if (reasoning) {
+      yield sseEvent({ type: 'reasoning', content: reasoning });
+    }
+    if (delta?.content) {
+      yield sseEvent({ type: 'ai_response', content: delta.content });
+    }
+    usage = chunk.usage ?? usage;
+  }
+
+  if (usage) {
+    yield sseEvent({
+      type: 'usage',
+      input_tokens: usage.prompt_tokens ?? usage.input_tokens ?? 0,
+      output_tokens: usage.completion_tokens ?? usage.output_tokens ?? 0,
+      total_tokens: usage.total_tokens ?? 0,
+    });
+  }
 }
 
 async function* runDirectDiagnostics(options: { sandbox?: any; signal?: AbortSignal }) {
@@ -492,7 +601,7 @@ function toSseEvent(event: unknown): Record<string, unknown> | null {
       const delta = e.data.event?.choices?.[0]?.delta;
       const reasoning = delta?.reasoning_content || delta?.reasoning;
       if (reasoning) {
-        return { type: 'thinking', content: reasoning };
+        return { type: 'reasoning', content: reasoning };
       }
     }
   }
