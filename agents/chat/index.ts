@@ -1,5 +1,11 @@
 import { Agent, run, type Session } from '@openai/agents';
-import { createGatewayClient, createGatewayModel, getAgentEnv, resolveGatewayModelName } from '../_model';
+import {
+  createGatewayClient,
+  createGatewayModel,
+  getAgentEnv,
+  resolveGatewayModelName,
+  type AgentEnv,
+} from '../_model';
 import { createLogger, createSSEResponse, jsonResponse, sseEvent, truncateText } from '../_shared';
 import { buildSystemPrompt, buildUserInput } from './_prompt';
 import {
@@ -35,12 +41,28 @@ export async function onRequest(context: any) {
     return jsonResponse({ error: "Missing required 'makers-conversation-id' header" }, 400);
   }
 
+  const env = getAgentEnv(context.env);
+  const sessionPromise: Promise<Session | undefined> = (
+    context.store && conversationId
+      ? Promise.resolve(context.store.openaiSession(conversationId))
+      : Promise.resolve(undefined)
+  );
+
   return createSSEResponse(
     async function* () {
       try {
         const combinedContext = extraContext ?? '';
         yield sseEvent({ type: 'thinking', content: '已收到问题，正在进行意图识别…' });
-        const intent = classifyIntent(message, combinedContext);
+
+        const session = await sessionPromise;
+        const classifyFn = async () => classifyIntent(message, combinedContext, session, env, signal);
+        const intent = context.tracer
+          ? await context.tracer.span('classify_intent', classifyFn, {
+              'agent.conversation_id': conversationId ?? '',
+              'agent.route_path': 'classify',
+            })
+          : await classifyFn();
+
         yield sseEvent({ type: 'tool_call', name: 'intent_classify', arguments: JSON.stringify({ message }) });
         yield sseEvent({ type: 'tool_result', name: 'intent_classify', content: JSON.stringify(intent) });
 
@@ -72,9 +94,7 @@ export async function onRequest(context: any) {
           return;
         }
 
-        const brewMissingFlow = isBrewMissingIntent(message, combinedContext);
-
-        if (brewMissingFlow) {
+        if (intent.route === 'brew_missing') {
           yield* runBrewMissingTroubleshooting({
             message,
             extraContext: combinedContext,
@@ -84,18 +104,17 @@ export async function onRequest(context: any) {
           return;
         }
 
-        if (!brewMissingFlow && isAnalysisIntent(message, combinedContext)) {
+        if (intent.route === 'analysis_fix') {
           yield* runDirectAnalysisAndFix({ message, extraContext: combinedContext, signal });
           return;
         }
 
-        const env = getAgentEnv(context.env);
         const systemPrompt = buildSystemPrompt(message);
         const userInput = buildUserInput(message, combinedContext);
 
-        const allowedTools = getAllowedTools(message, combinedContext);
+        const allowedTools = getAllowedTools(intent.route);
         const hasTools = allowedTools.length > 0;
-        const traceSummary = getTraceSummary(message, combinedContext, hasTools);
+        const traceSummary = getTraceSummary(intent.route, hasTools);
 
         const enableThinking =
           context.env?.AI_GATEWAY_ENABLE_THINKING !== 'false' &&
@@ -121,15 +140,8 @@ export async function onRequest(context: any) {
           env: context.env ?? {},
           signal,
           allowedTools,
-          sandbox: needsSandboxTool(message) ? context.sandbox : undefined,
+          sandbox: intent.needs_sandbox ? context.sandbox : undefined,
         });
-
-        // 只有工具路径需要 session adapter；常规问答直连上游，避免额外等待。
-        const sessionPromise: Promise<Session | undefined> = (
-          context.store && conversationId
-            ? Promise.resolve(context.store.openaiSession(conversationId))
-            : Promise.resolve(undefined)
-        );
 
         const agent = new Agent({
           name: 'homebrew-cn Agent',
@@ -145,9 +157,6 @@ export async function onRequest(context: any) {
           },
           tools,
         });
-
-        // 等待工具路径的 session 加载。
-        const session = await sessionPromise;
 
         // 4. Run Agent Loop and stream events
         const result = await run(agent, userInput, {
@@ -202,84 +211,158 @@ interface IntentClassification {
   reason: string;
 }
 
-function classifyIntent(message: string, extraContext?: string): IntentClassification {
-  if (isModelIdentityIntent(message)) {
+async function classifyIntent(
+  message: string,
+  extraContext: string | undefined,
+  session: Session | undefined,
+  env: AgentEnv,
+  signal?: AbortSignal,
+): Promise<IntentClassification> {
+  try {
+    return await classifyIntentWithLLM(message, extraContext, session, env, signal);
+  } catch (error) {
+    logger.error('Intent classification failed, falling back to general_homebrew:', error);
     return {
       ok: true,
       is_homebrew_related: true,
       needs_sandbox: false,
-      route: 'model_identity',
-      reason: '用户询问当前助手或模型身份，属于 homebrew-cn Agent 自身说明，无需沙盒。',
+      route: 'general_homebrew',
+      reason: '意图分类 LLM 调用失败，降级为通用 Homebrew 问答路径。',
     };
   }
+}
 
-  if (isResetOfficialIntent(message)) {
-    return {
-      ok: true,
-      is_homebrew_related: true,
-      needs_sandbox: false,
-      route: 'restore_official',
-      reason: '用户请求恢复 Homebrew 官方源，使用固定官方仓库地址直接生成命令，不需要沙盒或模型等待。',
-    };
-  }
+const CLASSIFICATION_PROMPT = `You are the intent classifier for the homebrew-cn Agent. Classify the user's latest message into exactly one route.
 
-  if (isDiagnosticIntent(message) || shouldExposeDiagnoseTool(message, extraContext)) {
-    return {
-      ok: true,
-      is_homebrew_related: true,
-      needs_sandbox: true,
-      route: 'mirror_probe_deep',
-      reason: '用户请求镜像源检测、测速或实时可用性判断，需要从 EdgeOne 沙箱发起网络探测。',
-    };
-  }
+Rules:
+- Prefer the most specific route. Do NOT default to general_homebrew when the user is clearly asking about installing or querying a specific package.
+- "是否可以用 Homebrew 安装 X" / "X 能不能用 brew 装" / "brew install X" / "brew info X" / "brew search X" are all formula_check.
+- "Homebrew 怎么安装" without a specific package is general_homebrew.
+- "Homebrew 是什么" / "brew 有什么用" is general_homebrew.
 
-  if (isFormulaCheckIntent(message, extraContext)) {
-    return {
-      ok: true,
-      is_homebrew_related: true,
-      needs_sandbox: false,
-      route: 'formula_check',
-      reason: '用户询问软件能否安装或需要 brew install 命令，只需查询 Homebrew JSON 索引，不需要沙盒。',
-    };
-  }
+Available routes:
+- model_identity: User asks about the model/AI/agent identity, e.g. "你是谁", "你是什么模型", "which model are you".
+- restore_official: User wants to restore/reset Homebrew to official upstream mirrors, e.g. "恢复官方源", "reset to official".
+- mirror_probe_deep: User wants online mirror diagnostics, speed test, or asks which mirror is fastest/best. This requires an EdgeOne sandbox to perform network probes.
+- formula_check: User asks whether a specific package/app can be installed with Homebrew, or wants a brew install/info/search command. Examples: "cc switch 是否可以用 Homebrew 安装", "brew install python", "有没有 docker-desktop".
+- brew_missing: User reports brew command not found, PATH issues, or is following up on a previous brew-not-in-PATH troubleshooting flow with terminal output or screenshots.
+- analysis_fix: User pasted error logs, shell profile content (e.g. .zshrc/.bashrc), git config, or environment info for diagnosis.
+- general_homebrew: Other Homebrew, homebrew-cn, or local environment related questions. Examples: "Homebrew 是什么", "怎么安装 Homebrew", "brew 常用命令".
+- reject: Not related to Homebrew or this agent's scope.
 
-  if (isBrewMissingIntent(message, extraContext)) {
-    return {
-      ok: true,
-      is_homebrew_related: true,
-      needs_sandbox: false,
-      route: 'brew_missing',
-      reason: '用户描述 brew 命令不可用或 PATH 问题，直接基于终端证据生成排查建议。',
-    };
-  }
+Consider the full conversation history. If the user is replying to a previous troubleshooting step, classify accordingly. For example, if the assistant previously asked the user to run diagnostic commands for "brew not found", and the user now pasted the terminal output, route should be brew_missing, not formula_check or general_homebrew.
 
-  if (isAnalysisIntent(message, extraContext)) {
-    return {
-      ok: true,
-      is_homebrew_related: true,
-      needs_sandbox: false,
-      route: 'analysis_fix',
-      reason: '用户提供 Homebrew 相关日志或环境信息，直接做本地文本诊断，不需要沙盒。',
-    };
-  }
+Output ONLY a valid JSON object with this exact shape and no extra text:
+{
+  "route": "<route_name>",
+  "reason": "<brief reason in Chinese>",
+  "is_homebrew_related": true|false,
+  "needs_sandbox": true|false
+}
 
-  if (isOffTopic(message)) {
-    return {
-      ok: true,
-      is_homebrew_related: false,
-      needs_sandbox: false,
-      route: 'reject',
-      reason: '问题不属于 Homebrew、homebrew-cn 或当前助手能力范围。',
-    };
-  }
+needs_sandbox should be true only when the route is mirror_probe_deep and the user explicitly wants to run online diagnostics from a sandbox.`;
+
+async function classifyIntentWithLLM(
+  message: string,
+  extraContext: string | undefined,
+  session: Session | undefined,
+  env: AgentEnv,
+  signal?: AbortSignal,
+): Promise<IntentClassification> {
+  const client = createGatewayClient(env);
+  const historyMessages = session ? await sessionItemsToMessages(session) : [];
+
+  const userContent = extraContext?.trim()
+    ? `${message}\n\nUser-provided environment context:\n${extraContext.trim()}`
+    : message;
+
+  const response = await client.chat.completions.create(
+    {
+      model: resolveGatewayModelName(env),
+      messages: [
+        { role: 'system', content: CLASSIFICATION_PROMPT },
+        ...historyMessages,
+        { role: 'user', content: userContent },
+      ],
+      response_format: { type: 'json_object' },
+      temperature: 0,
+      max_tokens: 256,
+    } as any,
+    { signal } as any,
+  );
+
+  const raw = (response as any).choices?.[0]?.message?.content ?? '';
+  const parsed = safeParseJson(raw);
+
+  const rawRoute = parsed?.route;
+  const route: IntentRoute =
+    typeof rawRoute === 'string' && VALID_ROUTES.includes(rawRoute as IntentRoute)
+      ? (rawRoute as IntentRoute)
+      : 'general_homebrew';
+  const isHomebrewRelated = typeof parsed?.is_homebrew_related === 'boolean' ? parsed.is_homebrew_related : route !== 'reject';
+  const needsSandbox = typeof parsed?.needs_sandbox === 'boolean' ? parsed.needs_sandbox : route === 'mirror_probe_deep';
 
   return {
     ok: true,
-    is_homebrew_related: true,
-    needs_sandbox: false,
-    route: 'general_homebrew',
-    reason: '识别为常规 Homebrew 或 homebrew-cn 指引问题，交给模型直接回答，不启用沙盒。',
+    is_homebrew_related: isHomebrewRelated,
+    needs_sandbox: needsSandbox,
+    route,
+    reason: typeof parsed?.reason === 'string' ? parsed.reason : '由 LLM 根据上下文判断。',
   };
+}
+
+const VALID_ROUTES: IntentRoute[] = [
+  'model_identity',
+  'restore_official',
+  'mirror_probe_deep',
+  'formula_check',
+  'brew_missing',
+  'analysis_fix',
+  'general_homebrew',
+  'reject',
+];
+
+function safeParseJson(value: unknown): Record<string, unknown> | null {
+  const text = typeof value === 'string' ? value.trim() : '';
+  if (!text) return null;
+  try {
+    return JSON.parse(text) as Record<string, unknown>;
+  } catch {
+    return null;
+  }
+}
+
+async function sessionItemsToMessages(session: Session): Promise<Array<{ role: 'user' | 'assistant' | 'system'; content: string }>> {
+  try {
+    const items = await session.getItems(16);
+    const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
+    for (const item of items) {
+      const anyItem = item as any;
+      if (anyItem.type !== 'message') continue;
+      const role = anyItem.role;
+      if (role !== 'user' && role !== 'assistant' && role !== 'system') continue;
+      const text = extractMessageText(anyItem.content);
+      if (text) messages.push({ role, content: text });
+    }
+    return messages;
+  } catch (error) {
+    logger.error('Failed to read session history:', error);
+    return [];
+  }
+}
+
+function extractMessageText(content: unknown): string {
+  if (typeof content === 'string') return content.trim();
+  if (!Array.isArray(content)) return '';
+  return content
+    .map((part: any) => {
+      if (part.type === 'input_text' || part.type === 'output_text') return part.text ?? '';
+      if (part.type === 'text') return part.text ?? '';
+      return '';
+    })
+    .filter(Boolean)
+    .join('\n')
+    .trim();
 }
 
 async function* runDirectRestoreOfficial() {
@@ -654,34 +737,6 @@ function extractUsage(value: unknown): Record<string, number> | null {
   };
 }
 
-function isDiagnosticIntent(message: string): boolean {
-  return /运行.*(镜像|源).*检测|在线.*镜像.*检测|检测.*镜像源|哪个.*镜像.*(最快|最好|可用)|mirror.*(check|diagnose|fastest)/i.test(message);
-}
-
-function isModelIdentityIntent(message: string): boolean {
-  const text = message.trim();
-  return /^ai[？?]?$/i.test(text) || /你是(什么|哪个|哪种).*(模型|model|ai|助手|agent)|你.*(模型|ai|助手|agent)|当前.*模型|用的.*模型|model\s*(name|id)|which\s+model/i.test(text);
-}
-
-function isAnalysisIntent(message: string, extraContext?: string): boolean {
-  const text = `${message}\n${extraContext ?? ''}`;
-  return /command not found: brew|brew: command not found|找不到.*brew|brew.*找不到|PATH=|\.zshrc|\.bashrc|bash_profile|HOMEBREW_|insteadOf|insteadof|git config|http_proxy|https_proxy|all_proxy|SSL_ERROR_SYSCALL|Connection refused|Failed during|fatal:/i.test(text);
-}
-
-// Lightweight local classifier to shield off-topic queries without a second model call.
-function isOffTopic(message: string): boolean {
-  const lowerMessage = message.toLowerCase();
-  const isObviousBrew = /brew|homebrew|linuxbrew|install\.sh|镜像|源|ustc|tuna|清华|中科大|aliyun|阿里云|tencent|腾讯云|opt\/homebrew|usr\/local|bashrc|zshrc|profile|path|command not found|ssl_error|brew doctor|brew update|brew install/i.test(lowerMessage);
-
-  if (isObviousBrew) {
-    return false;
-  }
-
-  const asksForGeneralCode = /写.*(程序|脚本|代码|网页|app|应用)|python|javascript|java|c\+\+|算法|爬虫|深拷贝|react|vue/i.test(lowerMessage);
-  const asksGeneralKnowledge = /历史|做菜|天气|股票|翻译|作文|数学题|物理|化学/i.test(lowerMessage);
-  return asksForGeneralCode || asksGeneralKnowledge;
-}
-
 interface PastedImage {
   name: string;
   type: string;
@@ -716,39 +771,17 @@ function formatSyncStatus(status: string) {
   return labels[status] || status;
 }
 
-function isBrewMissingIntent(message: string, extraContext?: string): boolean {
-  const text = [message, extraContext].filter(Boolean).join('\n\n');
-  return /command not found: brew|brew: command not found|zsh:\s*command not found:\s*brew|找不到.*brew|brew.*找不到|没有.*brew|brew.*not found|brew-not-in-PATH|command -v brew|\/opt\/homebrew\/bin\/brew|\/usr\/local\/bin\/brew/i.test(text);
-}
-
-function shouldExposeDiagnoseTool(message: string, extraContext?: string): boolean {
-  const text = [message, extraContext].filter(Boolean).join('\n\n');
-  if (isResetOfficialIntent(text)) return false;
-  return isDiagnosticIntent(text) || needsSandboxTool(text);
-}
-
-function getAllowedTools(message: string, extraContext?: string) {
+function getAllowedTools(route: IntentRoute): Array<'mirror_probe_deep' | 'formula_check'> {
   const allowed: Array<'mirror_probe_deep' | 'formula_check'> = [];
-  if (shouldExposeDiagnoseTool(message, extraContext)) allowed.push('mirror_probe_deep');
-  if (isFormulaCheckIntent(message, extraContext)) allowed.push('formula_check');
+  // formula_check is safe to expose broadly: it only reads the Homebrew JSON index and is useful
+  // whenever the user asks about a specific package, even if the classifier chose general_homebrew.
+  if (route === 'mirror_probe_deep' || route === 'formula_check' || route === 'general_homebrew') {
+    allowed.push('formula_check');
+  }
+  if (route === 'mirror_probe_deep') {
+    allowed.push('mirror_probe_deep');
+  }
   return allowed;
-}
-
-function isResetOfficialIntent(text: string): boolean {
-  return /恢复官方|恢复成官方|切回官方|切换官方|重置官方|官方源|reset official|restore official/i.test(text);
-}
-
-function needsSandboxTool(message: string): boolean {
-  return /镜像.*(速度|延迟|慢|快|超时|连接|可用|稳定|ping)|哪个.*(镜像|源).*(快|好|稳)|mirror.*(speed|latency|slow|fast|timeout|available|check|test)|检测.*(源|镜像|速度)|(源|镜像).*(检测|测速|测试)/i.test(message);
-}
-
-function isFormulaCheckIntent(message: string, extraContext?: string): boolean {
-  const text = [message, extraContext].filter(Boolean).join('\n\n').trim();
-  if (isResetOfficialIntent(text) || isDiagnosticIntent(text) || isAnalysisIntent(message, extraContext)) return false;
-  if (extractKnownPackageAlias(text) && /安装|装|install|能不能|能否|可以|可不可以|有没有|查询|查|search|info/i.test(text)) return true;
-  if (extractFormulaQueryCandidate(text)) return true;
-  if (/Homebrew\s*(可以|能|是|有什么|干什么|做什么)|brew\s*(是什么|可以做什么|有什么用)/i.test(text)) return false;
-  return /(brew|homebrew).*(安装|装|install|search|info|查|查询|有没有|能不能|支持)|怎么(安装|装).*(brew|homebrew)|能不能用\s*brew|用\s*brew\s*(装|安装)|brew\s+install\s+[\w@+._-]+|brew\s+(info|search)\s+[\w@+._-]+/i.test(text);
 }
 
 function extractFormulaQuery(message: string, extraContext?: string): string {
@@ -819,7 +852,6 @@ function extractKnownPackageAlias(text: string) {
 }
 
 export const __formulaQueryTestHooks = {
-  isFormulaCheckIntent,
   extractFormulaQuery,
 };
 
@@ -831,12 +863,11 @@ function needsThinking(message: string, extraContext?: string): boolean {
   return true;
 }
 
-function getTraceSummary(message: string, extraContext: string, hasTools: boolean) {
-  const text = [message, extraContext].filter(Boolean).join('\n\n');
-  if (isResetOfficialIntent(text)) {
+function getTraceSummary(route: IntentRoute, hasTools: boolean) {
+  if (route === 'restore_official') {
     return '步骤 1：识别为“恢复官方源”请求；步骤 2：跳过在线测速工具；步骤 3：基于 Homebrew 官方仓库地址生成恢复命令。';
   }
-  if (!hasTools && !needsThinking(message, extraContext)) {
+  if (!hasTools && route === 'general_homebrew') {
     return '步骤 1：识别为常规 Homebrew 指引问题；步骤 2：无需调用在线检测工具；步骤 3：直接生成可执行建议。';
   }
   return '';
