@@ -892,6 +892,7 @@ function normalizePackageAlias(query: string) {
     [/\b(google\s*chrome|chrome)\b|谷歌浏览器/i, 'google-chrome'],
     [/\b(qq)\b|腾讯qq/i, 'qq'],
     [/\b(wechat|weixin)\b|微信/i, 'wechat'],
+    [/\b(ss|shadowsocks)\b/i, 'shadowsocks'],
     [/\b(nodejs|node\.js)\b/i, 'node'],
     [/\bpython3\b/i, 'python'],
     [/\bdocker\s*desktop\b/i, 'docker-desktop'],

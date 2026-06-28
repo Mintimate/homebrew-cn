@@ -776,6 +776,8 @@ function extractFormulaQuery(message: string, extraContext?: string): string {
 function extractFormulaQueryCandidate(text: string): string {
   const compact = text.replace(/[?？。！!，,；;：:]/g, ' ').replace(/\s+/g, ' ').trim();
   const patterns = [
+    /(?:看看|看下|帮我看看|帮我看下|查一下|查下|查询|搜一下|搜索)?\s*(?:有没有|有无|是否有)\s*([a-z0-9@+._-]+(?:\s+[a-z0-9@+._-]+){0,3})/i,
+    /(?:查一下|查下|查询|搜一下|搜索|看看|看下)\s*([a-z0-9@+._-]+(?:\s+[a-z0-9@+._-]+){0,3})\s*(?:有没有|有无|能不能|能否|可以|是否)?\s*(?:安装|装|支持)?/i,
     /(?:brew|homebrew)\s*(?:可以|可不可以|能不能|能否|能|是否|支持|有没有)?\s*(?:用\s*)?(?:brew\s*)?(?:安装|装|install)\s*([a-z0-9@+._-]+(?:\s+[a-z0-9@+._-]+){0,3})/i,
     /(?:brew|homebrew)\s*(?:里|上)?\s*(?:有|有没有|支持|查|查询|search|info)\s*([a-z0-9@+._-]+(?:\s+[a-z0-9@+._-]+){0,3})/i,
     /(?:^|\s)([a-z0-9@+._-]+(?:\s+[a-z0-9@+._-]+){0,3})\s+(?:可以|可不可以|能不能|能否|能|是否)?\s*(?:用\s*)?(?:brew|homebrew)\s*(?:安装|装|install)?/i,
@@ -808,6 +810,7 @@ function extractKnownPackageAlias(text: string) {
     [/\b(google\s*chrome|chrome)\b|谷歌浏览器/i, 'google-chrome'],
     [/\b(wechat|weixin)\b|微信/i, 'wechat'],
     [/\bqq\b|腾讯qq/i, 'qq'],
+    [/\b(ss|shadowsocks)\b/i, 'shadowsocks'],
     [/\b(nodejs|node\.js)\b/i, 'node'],
     [/\bpython3\b/i, 'python'],
     [/\bdocker\s*desktop\b/i, 'docker-desktop'],

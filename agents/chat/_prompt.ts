@@ -38,6 +38,7 @@ export function buildSystemPrompt(userMessage: string, extraGuidance?: string): 
     '   - Linux default: `~/.bashrc` (or `~/.zshrc`)',
     '',
     'TOOL USE POLICY WHEN TOOLS ARE AVAILABLE:',
+    '- Never print pseudo tool-call syntax such as `call: default_api:...`, `[Tool Call Generation]`, or JSON tool calls as normal text. If a needed tool is unavailable, explain the limitation in natural language instead of fabricating a call.',
     '- When the user explicitly asks to run diagnostics (e.g. "运行在线镜像检测", "检测镜像源", "哪个镜像最快"), you MUST call the `mirror_probe_deep` tool IMMEDIATELY. Do NOT output any introductory text such as "正在为您运行在线镜像检测..." before calling the tool. Output only happens after the tool returns results.',
     '- If the user complains about slow speeds, connection failures, or asks which mirror is currently best, you MUST call `mirror_probe_deep` to show real-time progress. The mirrors to check are:',
     '  1. "Official (官方源)": "https://github.com/Homebrew/brew.git"',
