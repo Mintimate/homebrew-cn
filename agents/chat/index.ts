@@ -58,9 +58,9 @@ export async function onRequest(context: any) {
         const classifyFn = async () => classifyIntent(message, combinedContext, session, env, signal);
         const intent = context.tracer
           ? await context.tracer.span('classify_intent', classifyFn, {
-              'agent.conversation_id': conversationId ?? '',
-              'agent.route_path': 'classify',
-            })
+            'agent.conversation_id': conversationId ?? '',
+            'agent.route_path': 'classify',
+          })
           : await classifyFn();
 
         yield sseEvent({ type: 'tool_call', name: 'intent_classify', arguments: JSON.stringify({ message }) });
@@ -153,6 +153,7 @@ export async function onRequest(context: any) {
               chat_template_kwargs: {
                 enable_thinking: enableThinking,
               },
+              thinking_token_budget: 512,
             },
           },
           tools,
@@ -399,10 +400,9 @@ async function* runDirectRestoreOfficial() {
 }
 
 async function* runDirectModelIdentity(env: Record<string, string | undefined> | undefined) {
-  const model = env?.AI_GATEWAY_MODEL || '@makers/deepseek-v4-flash';
   yield sseEvent({
     type: 'ai_response',
-    content: `我是 homebrew-cn Agent，当前通过 EdgeOne Makers AI Gateway 调用的模型是 \`${model}\`。我的职责主要是处理 Homebrew 安装、镜像源、软件包安装查询和本地环境排查。`,
+    content: `我是 Homebrew Agent，由 [Mintimate](https://www.mintimate.cn) 开发。我的职责主要是协助处理 Homebrew 安装、镜像源配置、软件包查询以及本地环境诊断排查。`,
   });
 }
 
@@ -422,8 +422,11 @@ async function* runDirectGatewayChat(options: {
     ],
     stream: true,
     stream_options: { include_usage: true },
-    chat_template_kwargs: {
-      enable_thinking: options.enableThinking,
+    extra_body: {
+      chat_template_kwargs: {
+        enable_thinking: options.enableThinking,
+      },
+      thinking_token_budget: 512,
     },
   } as any, { signal: options.signal } as any) as unknown as AsyncIterable<any>;
 
@@ -698,8 +701,8 @@ function toSseEvent(event: unknown): Record<string, unknown> | null {
     const toolName = e.item?.name ?? e.item?.rawItem?.name;
     const args = e.item?.arguments ?? e.item?.rawItem?.arguments ?? e.item?.args ?? e.item?.rawItem?.args;
     if (toolName) {
-      return { 
-        type: 'tool_call', 
+      return {
+        type: 'tool_call',
         name: toolName,
         arguments: typeof args === 'object' ? JSON.stringify(args) : args
       };
@@ -710,7 +713,7 @@ function toSseEvent(event: unknown): Record<string, unknown> | null {
     const name = e.item?.name ?? e.item?.rawItem?.name ?? 'tool';
     const output = e.item?.output ?? e.item?.rawItem?.output;
     // 诊断结果 JSON 需要完整传递，不能截断
-    const content = name === 'diagnose' && typeof output === 'string' ? output : truncateText(output, 1000);
+    const content = (name === 'diagnose' || name === 'mirror_probe_deep') && typeof output === 'string' ? output : truncateText(output, 1000);
     return { type: 'tool_result', name, content };
   }
 
@@ -772,16 +775,8 @@ function formatSyncStatus(status: string) {
 }
 
 function getAllowedTools(route: IntentRoute): Array<'mirror_probe_deep' | 'formula_check'> {
-  const allowed: Array<'mirror_probe_deep' | 'formula_check'> = [];
-  // formula_check is safe to expose broadly: it only reads the Homebrew JSON index and is useful
-  // whenever the user asks about a specific package, even if the classifier chose general_homebrew.
-  if (route === 'mirror_probe_deep' || route === 'formula_check' || route === 'general_homebrew') {
-    allowed.push('formula_check');
-  }
-  if (route === 'mirror_probe_deep') {
-    allowed.push('mirror_probe_deep');
-  }
-  return allowed;
+  // Always expose both tools so that the LLM has them available in the Agent loop regardless of classification.
+  return ['mirror_probe_deep', 'formula_check'];
 }
 
 function extractFormulaQuery(message: string, extraContext?: string): string {
