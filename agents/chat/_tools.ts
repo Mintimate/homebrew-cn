@@ -32,7 +32,7 @@ interface MirrorDiagnosticResult {
   http_status: number;
   commit_hash: string | null;
   error: string | null;
-  sync_status: 'upstream' | 'synced' | 'lagging' | 'failed';
+  sync_status: 'upstream' | 'synced' | 'lagging' | 'failed' | 'network_restricted';
   method?: 'edge_fetch' | 'sandbox' | 'sandbox_deep';
   dns_ms?: number | null;
   tcp_ms?: number | null;
@@ -41,6 +41,7 @@ interface MirrorDiagnosticResult {
   git_ok?: boolean;
   git_error?: string | null;
   ip?: string | null;
+  network_note?: string | null;
 }
 
 interface AnalyzeIssue {
@@ -170,7 +171,13 @@ function updateSyncStatus(report: MirrorDiagnosticResult[]) {
 
   for (const r of report) {
     if (r.name === 'Official (官方源)') {
-      r.sync_status = 'upstream';
+      if (r.error && !r.commit_hash) {
+        r.sync_status = 'network_restricted';
+        r.network_note = 'EdgeOne 沙箱当前无法访问 GitHub 官方源；这只代表检测环境受限，不等同于官方源故障。';
+      } else {
+        r.sync_status = 'upstream';
+        r.network_note = null;
+      }
     } else if (!r.commit_hash) {
       r.sync_status = 'failed';
     } else if (officialHash) {
@@ -450,6 +457,7 @@ function parseProbeResult(value: unknown): MirrorDiagnosticResult | null {
       commit_hash: parsed.commit_hash || null,
       error: parsed.error || null,
       sync_status: 'failed',
+      network_note: parsed.network_note || null,
       dns_ms: typeof parsed.dns_ms === 'number' ? parsed.dns_ms : null,
       tcp_ms: typeof parsed.tcp_ms === 'number' ? parsed.tcp_ms : null,
       tls_ms: typeof parsed.tls_ms === 'number' ? parsed.tls_ms : null,

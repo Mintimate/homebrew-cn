@@ -431,6 +431,7 @@ function summarizeDiagnostics(result: Awaited<ReturnType<typeof diagnoseHomebrew
     .filter((item) => !item.error && item.http_status >= 200 && item.http_status < 400)
     .sort((a, b) => a.latency_ms - b.latency_ms);
   const best = usable.find((item) => item.name !== 'Official (官方源)') ?? usable[0];
+  const official = result.report.find((item) => item.name === 'Official (官方源)');
 
   const lines = [
     `在线镜像源诊断完成，用时 ${(result.duration_ms / 1000).toFixed(1)} 秒。`,
@@ -441,6 +442,10 @@ function summarizeDiagnostics(result: Awaited<ReturnType<typeof diagnoseHomebrew
     lines.push(`当前建议优先选择 **${best.name}**，延迟约 **${best.latency_ms} ms**，同步状态为 **${formatSyncStatus(best.sync_status)}**。`);
   } else {
     lines.push('本次没有检测到可直接访问的镜像源，建议检查本地网络、代理或稍后重试。');
+  }
+
+  if (official?.sync_status === 'network_restricted') {
+    lines.push('官方源检测失败通常是 EdgeOne 沙箱无法访问 GitHub 导致，不代表 Homebrew 官方源本身不可用。');
   }
 
   lines.push('');
@@ -706,6 +711,7 @@ function formatSyncStatus(status: string) {
     synced: '同步正常',
     lagging: '延迟同步',
     failed: '异常',
+    network_restricted: '沙箱网络受限',
   };
   return labels[status] || status;
 }
