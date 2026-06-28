@@ -127,12 +127,18 @@ function cleanRepeatedToolName(name: string): string {
     'diagnose_upstream_mirrors': 'diagnose',
     'diagnose_mirrors': 'diagnose',
     'diagnose': 'diagnose',
+    'mirror_probe_deep': 'mirror_probe_deep',
+    'mirror_probe': 'mirror_probe_deep',
+    'probe_deep': 'mirror_probe_deep',
     'analyze_local_env_diagnostic': 'analyze',
     'analyze_env': 'analyze',
     'analyze': 'analyze',
     'generate_fix_script': 'fix',
     'fix_script': 'fix',
     'fix': 'fix',
+    'formula_check': 'formula_check',
+    'check_formula': 'formula_check',
+    'formula': 'formula_check',
   };
 
   for (const [pattern, target] of Object.entries(mappings)) {
