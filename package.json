@@ -1,9 +1,17 @@
 {
   "type": "module",
   "scripts": {
-    "build": "bash build.sh"
+    "build": "bash build.sh",
+    "typecheck": "tsc --noEmit"
   },
   "dependencies": {
-    "@edgeone/pages-blob": "latest"
+    "@edgeone/pages-blob": "latest",
+    "@openai/agents": "^0.11.8",
+    "openai": "^6.44.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "tsx": "^4.21.0",
+    "typescript": "6.0.3"
   }
 }
