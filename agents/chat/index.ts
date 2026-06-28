@@ -112,29 +112,13 @@ export async function onRequest(context: any) {
         const systemPrompt = buildSystemPrompt(message);
         const userInput = buildUserInput(message, combinedContext);
 
-        const allowedTools = getAllowedTools(intent.route);
-        const hasTools = allowedTools.length > 0;
-        const traceSummary = getTraceSummary(intent.route, hasTools);
+        const allowedTools = getAllowedTools();
 
         const enableThinking =
           context.env?.AI_GATEWAY_ENABLE_THINKING !== 'false' &&
           needsThinking(message, combinedContext);
 
         yield sseEvent({ type: 'thinking', content: '正在分析你的问题…' });
-        if (traceSummary) {
-          yield sseEvent({ type: 'thinking', content: traceSummary });
-        }
-
-        if (!hasTools) {
-          yield* runDirectGatewayChat({
-            env,
-            systemPrompt,
-            userInput,
-            enableThinking,
-            signal,
-          });
-          return;
-        }
 
         const tools = createHomebrewTools({
           env: context.env ?? {},
@@ -404,54 +388,6 @@ async function* runDirectModelIdentity() {
     type: 'ai_response',
     content: `我是 Homebrew Agent，由 [Mintimate](https://www.mintimate.cn) 开发。我的职责主要是协助处理 Homebrew 安装、镜像源配置、软件包查询以及本地环境诊断排查。`,
   });
-}
-
-async function* runDirectGatewayChat(options: {
-  env: ReturnType<typeof getAgentEnv>;
-  systemPrompt: string;
-  userInput: string;
-  enableThinking: boolean;
-  signal?: AbortSignal;
-}) {
-  const client = createGatewayClient(options.env);
-  const stream = await client.chat.completions.create({
-    model: resolveGatewayModelName(options.env),
-    messages: [
-      { role: 'system', content: options.systemPrompt },
-      { role: 'user', content: options.userInput },
-    ],
-    stream: true,
-    stream_options: { include_usage: true },
-    extra_body: {
-      chat_template_kwargs: {
-        enable_thinking: options.enableThinking,
-      },
-      thinking_token_budget: 512,
-    },
-  } as any, { signal: options.signal } as any) as unknown as AsyncIterable<any>;
-
-  let usage: any = null;
-  for await (const chunk of stream) {
-    if (options.signal?.aborted) break;
-    const delta = chunk.choices?.[0]?.delta;
-    const reasoning = delta?.reasoning_content ?? delta?.reasoning;
-    if (reasoning) {
-      yield sseEvent({ type: 'reasoning', content: reasoning });
-    }
-    if (delta?.content) {
-      yield sseEvent({ type: 'ai_response', content: delta.content });
-    }
-    usage = chunk.usage ?? usage;
-  }
-
-  if (usage) {
-    yield sseEvent({
-      type: 'usage',
-      input_tokens: usage.prompt_tokens ?? usage.input_tokens ?? 0,
-      output_tokens: usage.completion_tokens ?? usage.output_tokens ?? 0,
-      total_tokens: usage.total_tokens ?? 0,
-    });
-  }
 }
 
 async function* runDirectDiagnostics(options: { sandbox?: any; signal?: AbortSignal }) {
@@ -774,7 +710,7 @@ function formatSyncStatus(status: string) {
   return labels[status] || status;
 }
 
-function getAllowedTools(route: IntentRoute): Array<'mirror_probe_deep' | 'formula_check'> {
+function getAllowedTools(): Array<'mirror_probe_deep' | 'formula_check'> {
   // Always expose both tools so that the LLM has them available in the Agent loop regardless of classification.
   return ['mirror_probe_deep', 'formula_check'];
 }
@@ -856,16 +792,6 @@ function needsThinking(message: string, extraContext?: string): boolean {
   if (/为什么|怎么回事|原因|排查|诊断|失败了|不生效|没有效果|还是不行|依然|一直|总是/i.test(message)) return true;
   if (/^(如何|怎么|怎样|怎麼|如何才能|能不能|可以|可否|是否可以|help me|how (to|do|can)|what is|what are)/i.test(message.trim())) return false;
   return true;
-}
-
-function getTraceSummary(route: IntentRoute, hasTools: boolean) {
-  if (route === 'restore_official') {
-    return '步骤 1：识别为“恢复官方源”请求；步骤 2：跳过在线测速工具；步骤 3：基于 Homebrew 官方仓库地址生成恢复命令。';
-  }
-  if (!hasTools && route === 'general_homebrew') {
-    return '步骤 1：识别为常规 Homebrew 指引问题；步骤 2：无需调用在线检测工具；步骤 3：直接生成可执行建议。';
-  }
-  return '';
 }
 
 function buildBrewMissingReply(text: string, pastedImageCount: number) {
