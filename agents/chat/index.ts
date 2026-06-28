@@ -19,6 +19,8 @@ import {
 } from './_tools';
 
 const logger = createLogger('chat');
+const AGENT_NAME = 'homebrew-cn Agent';
+const AGENT_ROUTE_PATH = '/chat';
 
 export async function onRequest(context: any) {
   const body = context.request?.body ?? {};
@@ -41,6 +43,12 @@ export async function onRequest(context: any) {
     return jsonResponse({ error: "Missing required 'makers-conversation-id' header" }, 400);
   }
 
+  const observability = createObservabilityContext(context, conversationId, {
+    hasContext: Boolean(extraContext?.trim()),
+    imageCount: pastedImages.length,
+    messageLength: message.length,
+  });
+
   const env = getAgentEnv(context.env);
   const sessionPromise: Promise<Session | undefined> = (
     context.store && conversationId
@@ -55,57 +63,97 @@ export async function onRequest(context: any) {
         yield sseEvent({ type: 'thinking', content: '已收到问题，正在进行意图识别…' });
 
         const session = await sessionPromise;
-        const classifyFn = async () => classifyIntent(message, combinedContext, session, env, signal);
-        const intent = context.tracer
-          ? await context.tracer.span('classify_intent', classifyFn, {
-            'agent.conversation_id': conversationId ?? '',
-            'agent.route_path': 'classify',
-          })
-          : await classifyFn();
+        const intent = await withTrace(observability, 'classify_intent', {
+          'agent.step': 'intent',
+          'input.length': message.length,
+          'input.has_context': Boolean(combinedContext.trim()),
+        }, async (span) => {
+          const result = await classifyIntent(message, combinedContext, session, env, signal);
+          setTraceAttributes(span, {
+            'intent.route': result.route,
+            'intent.homebrew_related': result.is_homebrew_related,
+            'intent.needs_sandbox': result.needs_sandbox,
+          });
+          return result;
+        });
+
+        setTraceAttributes(observability.tracer, {
+          'agent.intent_route': intent.route,
+          'agent.homebrew_related': intent.is_homebrew_related,
+          'agent.needs_sandbox': intent.needs_sandbox,
+        });
 
         yield sseEvent({ type: 'tool_call', name: 'intent_classify', arguments: JSON.stringify({ message }) });
         yield sseEvent({ type: 'tool_result', name: 'intent_classify', content: JSON.stringify(intent) });
 
         if (!intent.is_homebrew_related) {
-          yield sseEvent({
-            type: 'ai_response',
-            content: '我是 homebrew-cn Agent，主要处理 Homebrew 安装、镜像源、软件包安装查询和本地环境排查。这个问题不属于 Homebrew 或本助手能力范围，因此我不能继续回答。你可以把 Homebrew 安装日志、终端报错、镜像源问题或软件包安装问题发给我。',
+          yield* withTraceStream(observability, 'direct_reject', {
+            'agent.step': 'reject',
+            'intent.route': intent.route,
+          }, async function* () {
+            yield sseEvent({
+              type: 'ai_response',
+              content: '我是 homebrew-cn Agent，主要处理 Homebrew 安装、镜像源、软件包安装查询和本地环境排查。这个问题不属于 Homebrew 或本助手能力范围，因此我不能继续回答。你可以把 Homebrew 安装日志、终端报错、镜像源问题或软件包安装问题发给我。',
+            });
           });
           return;
         }
 
         if (intent.route === 'model_identity') {
-          yield* runDirectModelIdentity();
+          yield* withTraceStream(observability, 'direct_model_identity', {
+            'agent.step': 'model_identity',
+            'intent.route': intent.route,
+          }, runDirectModelIdentity);
           return;
         }
 
         if (intent.route === 'restore_official') {
-          yield* runDirectRestoreOfficial();
+          yield* withTraceStream(observability, 'direct_restore_official', {
+            'agent.step': 'restore_official',
+            'intent.route': intent.route,
+          }, runDirectRestoreOfficial);
           return;
         }
 
         if (intent.route === 'mirror_probe_deep') {
-          yield* runDirectDiagnostics({ sandbox: context.sandbox, signal });
+          yield* withTraceStream(observability, 'direct_mirror_probe_deep', {
+            'agent.step': 'mirror_probe_deep',
+            'intent.route': intent.route,
+            'tool.name': 'mirror_probe_deep',
+            'tool.sandbox_available': Boolean(context.sandbox),
+          }, (span) => runDirectDiagnostics({ sandbox: context.sandbox, signal, traceSpan: span }));
           return;
         }
 
         if (intent.route === 'formula_check') {
-          yield* runDirectFormulaCheck({ message, extraContext: combinedContext, signal });
+          yield* withTraceStream(observability, 'direct_formula_check', {
+            'agent.step': 'formula_check',
+            'intent.route': intent.route,
+            'tool.name': 'formula_check',
+          }, (span) => runDirectFormulaCheck({ message, extraContext: combinedContext, signal, traceSpan: span }));
           return;
         }
 
         if (intent.route === 'brew_missing') {
-          yield* runBrewMissingTroubleshooting({
+          yield* withTraceStream(observability, 'direct_brew_missing', {
+            'agent.step': 'brew_missing',
+            'intent.route': intent.route,
+            'input.image_count': pastedImages.length,
+          }, () => runBrewMissingTroubleshooting({
             message,
             extraContext: combinedContext,
             pastedImageCount: pastedImages.length,
             signal,
-          });
+          }));
           return;
         }
 
         if (intent.route === 'analysis_fix') {
-          yield* runDirectAnalysisAndFix({ message, extraContext: combinedContext, signal });
+          yield* withTraceStream(observability, 'direct_analysis_fix', {
+            'agent.step': 'analysis_fix',
+            'intent.route': intent.route,
+            'tool.name': 'analyze',
+          }, (span) => runDirectAnalysisAndFix({ message, extraContext: combinedContext, signal, traceSpan: span }));
           return;
         }
 
@@ -128,7 +176,7 @@ export async function onRequest(context: any) {
         });
 
         const agent = new Agent({
-          name: 'homebrew-cn Agent',
+          name: AGENT_NAME,
           instructions: systemPrompt,
           model: createGatewayModel(env),
           modelSettings: {
@@ -143,39 +191,216 @@ export async function onRequest(context: any) {
           tools,
         });
 
-        // 4. Run Agent Loop and stream events
-        const result = await run(agent, userInput, {
-          stream: true,
-          signal,
-          session,
-          maxTurns: 5,
-          sessionInputCallback: limitSessionHistory,
+        const runSpan = startTraceSpan(observability, 'openai_agents_run', {
+          'agent.step': 'agent_run',
+          'intent.route': intent.route,
+          'agent.max_turns': 5,
+          'agent.tools.allowed': allowedTools.join(','),
+          'llm.model_name': resolveGatewayModelName(env),
         });
 
         let usage: any = null;
-        for await (const event of result.toStream()) {
-          if (signal?.aborted) break;
-          const mapped = toSseEvent(event);
-          if (mapped) {
-            yield sseEvent(mapped);
+        let streamEventCount = 0;
+        try {
+          const result = await run(agent, userInput, {
+            stream: true,
+            signal,
+            session,
+            maxTurns: 5,
+            sessionInputCallback: limitSessionHistory,
+          });
+
+          for await (const event of result.toStream()) {
+            if (signal?.aborted) break;
+            streamEventCount += 1;
+            const mapped = toSseEvent(event);
+            if (mapped) {
+              yield sseEvent(mapped);
+            }
+            usage = extractUsage(event) ?? usage;
           }
-          usage = extractUsage(event) ?? usage;
+
+          usage = extractUsage(result) ?? usage;
+        } catch (error) {
+          recordTraceError(runSpan, error);
+          throw error;
+        } finally {
+          setTraceAttributes(runSpan, {
+            'agent.stream_event_count': streamEventCount,
+            'agent.aborted': Boolean(signal?.aborted),
+            ...usageAttributes(usage),
+          });
+          endTraceSpan(runSpan);
         }
 
-        usage = extractUsage(result) ?? usage;
         if (usage) {
           yield sseEvent({ type: 'usage', ...usage });
         }
 
       } catch (error) {
         const err = error as Error;
-        if (err.name === 'AbortError' || signal?.aborted || err.message?.includes('terminated')) return;
+        if (err.name === 'AbortError' || signal?.aborted || err.message?.includes('terminated')) {
+          setTraceAttributes(observability.tracer, { 'agent.aborted': true });
+          return;
+        }
+        recordTraceError(observability.tracer, error);
         logger.error(err);
         yield sseEvent({ type: 'error_message', content: err.message });
+      } finally {
+        setTraceAttributes(observability.tracer, {
+          'agent.duration_ms': Date.now() - observability.startedAt,
+          'agent.aborted': Boolean(signal?.aborted),
+        });
       }
     },
     signal,
   );
+}
+
+type TraceAttributeValue = string | number | boolean;
+type TraceAttributes = Record<string, TraceAttributeValue>;
+
+interface TraceSpan {
+  setAttributes?: (attributes: TraceAttributes) => void;
+  end?: () => void;
+}
+
+interface AgentTracer extends TraceSpan {
+  span?: <T>(
+    name: string,
+    fn: (span?: TraceSpan) => T | Promise<T>,
+    attributes?: TraceAttributes,
+  ) => Promise<T>;
+  startSpan?: (name: string, attributes?: TraceAttributes) => TraceSpan;
+}
+
+interface ObservabilityContext {
+  tracer?: AgentTracer;
+  baseAttributes: TraceAttributes;
+  startedAt: number;
+}
+
+function createObservabilityContext(
+  context: any,
+  conversationId: string,
+  request: { hasContext: boolean; imageCount: number; messageLength: number },
+): ObservabilityContext {
+  const tracer = context.tracer as AgentTracer | undefined;
+  const baseAttributes: TraceAttributes = {
+    'agent.name': AGENT_NAME,
+    'agent.framework': 'openai-agents-sdk',
+    'agent.conversation_id': conversationId,
+    'agent.route_path': AGENT_ROUTE_PATH,
+  };
+
+  setTraceAttributes(tracer, {
+    ...baseAttributes,
+    'agent.request.message_length': request.messageLength,
+    'agent.request.has_context': request.hasContext,
+    'agent.request.image_count': request.imageCount,
+  });
+
+  return {
+    tracer,
+    baseAttributes,
+    startedAt: Date.now(),
+  };
+}
+
+function traceAttributes(
+  observability: ObservabilityContext,
+  attributes?: TraceAttributes,
+): TraceAttributes {
+  return {
+    ...observability.baseAttributes,
+    ...(attributes ?? {}),
+  };
+}
+
+async function withTrace<T>(
+  observability: ObservabilityContext,
+  name: string,
+  attributes: TraceAttributes,
+  fn: (span?: TraceSpan) => Promise<T>,
+): Promise<T> {
+  if (!observability.tracer?.span) {
+    return fn(undefined);
+  }
+
+  return observability.tracer.span(name, fn, traceAttributes(observability, attributes));
+}
+
+function startTraceSpan(
+  observability: ObservabilityContext,
+  name: string,
+  attributes: TraceAttributes,
+): TraceSpan | undefined {
+  try {
+    return observability.tracer?.startSpan?.(name, traceAttributes(observability, attributes));
+  } catch {
+    return undefined;
+  }
+}
+
+async function* withTraceStream(
+  observability: ObservabilityContext,
+  name: string,
+  attributes: TraceAttributes,
+  producer: (span?: TraceSpan) => AsyncIterable<string> | Iterable<string>,
+): AsyncGenerator<string> {
+  const span = startTraceSpan(observability, name, attributes);
+  const startedAt = Date.now();
+  let eventCount = 0;
+
+  try {
+    for await (const event of producer(span)) {
+      eventCount += 1;
+      yield event;
+    }
+    setTraceAttributes(span, {
+      'agent.stream_event_count': eventCount,
+      'agent.duration_ms': Date.now() - startedAt,
+    });
+  } catch (error) {
+    recordTraceError(span, error);
+    throw error;
+  } finally {
+    endTraceSpan(span);
+  }
+}
+
+function setTraceAttributes(target: TraceSpan | undefined, attributes: TraceAttributes): void {
+  try {
+    target?.setAttributes?.(attributes);
+  } catch {
+    // Observability must never break the agent response path.
+  }
+}
+
+function endTraceSpan(span: TraceSpan | undefined): void {
+  try {
+    span?.end?.();
+  } catch {
+    // Observability must never break the agent response path.
+  }
+}
+
+function recordTraceError(target: TraceSpan | undefined, error: unknown): void {
+  const err = error as Error;
+  setTraceAttributes(target, {
+    'error': true,
+    'error.name': err.name || 'Error',
+    'error.message': truncateText(err.message || String(error), 500),
+  });
+}
+
+function usageAttributes(usage: any): TraceAttributes {
+  if (!usage) return {};
+  return {
+    'llm.usage.input_tokens': usage.input_tokens ?? usage.prompt_tokens ?? 0,
+    'llm.usage.output_tokens': usage.output_tokens ?? usage.completion_tokens ?? 0,
+    'llm.usage.total_tokens': usage.total_tokens ?? 0,
+  };
 }
 
 type IntentRoute =
@@ -390,13 +615,12 @@ async function* runDirectModelIdentity() {
   });
 }
 
-async function* runDirectDiagnostics(options: { sandbox?: any; signal?: AbortSignal }) {
+async function* runDirectDiagnostics(options: { sandbox?: any; signal?: AbortSignal; traceSpan?: TraceSpan }) {
   yield sseEvent({ type: 'tool_call', name: 'mirror_probe_deep', arguments: '{}' });
 
   const pending: string[] = [];
   let wake: (() => void) | null = null;
   let finished = false;
-  let finalResult: Awaited<ReturnType<typeof probeHomebrewMirrorsDeep>> | null = null;
 
   const notify = () => {
     wake?.();
@@ -417,13 +641,14 @@ async function* runDirectDiagnostics(options: { sandbox?: any; signal?: AbortSig
       notify();
     },
   }).then((result) => {
-    finalResult = result;
     finished = true;
     notify();
+    return result;
   }).catch((error) => {
     pending.push(sseEvent({ type: 'error_message', content: (error as Error).message }));
     finished = true;
     notify();
+    return null;
   });
 
   while (!finished || pending.length) {
@@ -436,9 +661,15 @@ async function* runDirectDiagnostics(options: { sandbox?: any; signal?: AbortSig
     }
   }
 
-  await diagnosticsPromise;
+  const finalResult = await diagnosticsPromise;
 
   if (finalResult) {
+    setTraceAttributes(options.traceSpan, {
+      'tool.result.ok': finalResult.ok,
+      'tool.result.duration_ms': finalResult.duration_ms,
+      'tool.result.report_count': finalResult.report.length,
+      'tool.result.failed_count': finalResult.report.filter((item) => item.error).length,
+    });
     yield sseEvent({
       type: 'tool_result',
       name: 'mirror_probe_deep',
@@ -475,13 +706,22 @@ function summarizeDiagnostics(result: Awaited<ReturnType<typeof diagnoseHomebrew
   return lines.join('\n');
 }
 
-function* runDirectAnalysisAndFix(options: { message: string; extraContext?: string; signal?: AbortSignal }) {
+function* runDirectAnalysisAndFix(options: {
+  message: string;
+  extraContext?: string;
+  signal?: AbortSignal;
+  traceSpan?: TraceSpan;
+}) {
   const sourceText = buildAnalysisInput(options.message, options.extraContext);
   yield sseEvent({ type: 'tool_call', name: 'analyze', arguments: JSON.stringify({ text: summarizeToolInput(sourceText) }) });
 
   if (options.signal?.aborted) return;
 
   const analysis = analyzeHomebrewText(sourceText);
+  setTraceAttributes(options.traceSpan, {
+    'tool.result.issue_count': analysis.issues_found,
+    'tool.result.analyzed_lines': analysis.analyzed_lines,
+  });
   yield sseEvent({
     type: 'tool_result',
     name: 'analyze',
@@ -491,6 +731,10 @@ function* runDirectAnalysisAndFix(options: { message: string; extraContext?: str
   const fixOptions = inferFixOptions(sourceText, analysis.issues);
   let fixScript = '';
   if (fixOptions && !options.signal?.aborted) {
+    setTraceAttributes(options.traceSpan, {
+      'tool.fix.generated': true,
+      'tool.fix.issue_count': fixOptions.issue_ids.length,
+    });
     yield sseEvent({ type: 'tool_call', name: 'fix', arguments: JSON.stringify(fixOptions) });
     fixScript = generateFixScript(fixOptions);
     yield sseEvent({
@@ -543,8 +787,10 @@ async function* runDirectFormulaCheck(options: {
   extraContext?: string;
   sandbox?: any;
   signal?: AbortSignal;
+  traceSpan?: TraceSpan;
 }) {
   const query = extractFormulaQuery(options.message, options.extraContext);
+  setTraceAttributes(options.traceSpan, { 'tool.query': query });
   yield sseEvent({
     type: 'thinking',
     content: `步骤 1：识别为 Homebrew 软件包安装查询；步骤 2：准备查询 Homebrew JSON 索引；步骤 3：根据索引结果给出安装命令或未收录提示。查询对象：${query}`,
@@ -571,6 +817,12 @@ async function* runDirectFormulaCheck(options: {
     env: {},
     sandbox: options.sandbox,
     signal: options.signal,
+  });
+
+  setTraceAttributes(options.traceSpan, {
+    'tool.result.source': result.source,
+    'tool.result.exact_match': Boolean(result.exact),
+    'tool.result.candidate_count': result.candidates.length,
   });
 
   yield sseEvent({
