@@ -1106,7 +1106,3 @@ export function createHomebrewTools(options: ToolOptions) {
 
   return tools.filter((t) => allowed.has(t.name as HomebrewToolName));
 }
-
-export function shouldEnableModelTools(env: ToolEnv): boolean {
-  return env.ENABLE_MODEL_TOOLS === 'true';
-}

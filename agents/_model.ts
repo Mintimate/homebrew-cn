@@ -41,23 +41,23 @@ export function createGatewayClient(env: AgentEnv) {
 
 function wrapOpenAIClient(client: OpenAI, env: AgentEnv) {
   const originalCreate = client.chat.completions.create.bind(client.chat.completions);
-  
+
   client.chat.completions.create = async function (params: any, options: any): Promise<any> {
     params = withVllmThinkingParams(params, env);
     const response = await originalCreate(params, options);
-    
+
     if (params.stream) {
       return {
         [Symbol.asyncIterator]() {
           const iterator = (response as any)[Symbol.asyncIterator]();
           const toolCallNames: Record<number, string> = {};
           const toolCallSent: Record<number, string> = {};
-          
+
           return {
             async next() {
               const result = await iterator.next();
               if (result.done) return result;
-              
+
               const chunk = result.value;
               const choice = chunk.choices?.[0];
               const delta = choice?.delta;
@@ -68,7 +68,7 @@ function wrapOpenAIClient(client: OpenAI, env: AgentEnv) {
                   delta.reasoning = delta.reasoning_content;
                 }
                 if (delta.tool_calls) {
-                   for (const tc of delta.tool_calls) {
+                  for (const tc of delta.tool_calls) {
                     const index = tc.index;
                     if (tc.function?.name) {
                       if (toolCallNames[index] === undefined) {
@@ -127,12 +127,18 @@ function cleanRepeatedToolName(name: string): string {
     'diagnose_upstream_mirrors': 'diagnose',
     'diagnose_mirrors': 'diagnose',
     'diagnose': 'diagnose',
+    'mirror_probe_deep': 'mirror_probe_deep',
+    'mirror_probe': 'mirror_probe_deep',
+    'probe_deep': 'mirror_probe_deep',
     'analyze_local_env_diagnostic': 'analyze',
     'analyze_env': 'analyze',
     'analyze': 'analyze',
     'generate_fix_script': 'fix',
     'fix_script': 'fix',
     'fix': 'fix',
+    'formula_check': 'formula_check',
+    'check_formula': 'formula_check',
+    'formula': 'formula_check',
   };
 
   for (const [pattern, target] of Object.entries(mappings)) {
