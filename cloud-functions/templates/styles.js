@@ -575,6 +575,18 @@ export function getStyles() {
         .agent-text-content p:last-child {
             margin-bottom: 0;
         }
+
+        .agent-usage {
+            margin-top: 2px;
+            padding-top: 8px;
+            border-top: 1px solid rgba(255, 184, 77, 0.12);
+            color: #8a7a6b;
+            font-family: var(--font-mono);
+            font-size: 0.68rem;
+            line-height: 1.4;
+            word-break: break-word;
+        }
+
         .chat-messages a {
             color: var(--accent);
             text-decoration: none;
@@ -2009,6 +2021,10 @@ export function getStyles() {
         html[data-theme="light"] .agent-text-content pre code {
             color: #2c221e;
             background: transparent;
+        }
+        html[data-theme="light"] .agent-usage {
+            border-top-color: rgba(220, 122, 28, 0.12);
+            color: #8a7a6b;
         }
         html[data-theme="light"] .code-header {
             background: #e8e2dd;
