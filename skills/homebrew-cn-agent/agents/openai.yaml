@@ -1,0 +1,4 @@
+interface:
+  display_name: "Homebrew CN Agent"
+  short_description: "Homebrew 中文镜像助手行为规范说明"
+  default_prompt: "Use $homebrew-cn-agent to answer and troubleshoot Homebrew CN installer, mirror, package, and environment questions."

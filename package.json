@@ -1,6 +1,7 @@
 {
   "type": "module",
   "scripts": {
+    "sync:agent-skill": "node scripts/sync-homebrew-cn-agent-skill.mjs",
     "build": "bash build.sh",
     "typecheck": "tsc --noEmit"
   },

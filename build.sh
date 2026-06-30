@@ -13,6 +13,9 @@ ASSETS_DIR="${SCRIPT_DIR}/assets"
 
 echo "🔨 开始构建..."
 
+# 先将项目内 skill 文档同步为 Agent runtime 可打包的 TS adapter
+node "${SCRIPT_DIR}/scripts/sync-homebrew-cn-agent-skill.mjs"
+
 # 检查源文件是否存在
 if [ ! -f "$SOURCE_SCRIPT" ]; then
   echo "❌ 错误: install.sh 不存在于项目根目录"
