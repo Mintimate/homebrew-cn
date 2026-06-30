@@ -8,6 +8,7 @@ import {
 } from '../_model';
 import { createLogger, createSSEResponse, jsonResponse, sseEvent, truncateText } from '../_shared';
 import { buildSystemPrompt, buildUserInput } from './_prompt';
+import { buildIntentClassificationPrompt } from './_skill';
 import {
   analyzeHomebrewText,
   checkHomebrewFormulaIndex,
@@ -501,35 +502,7 @@ async function classifyIntent(
   }
 }
 
-const CLASSIFICATION_PROMPT = `You are the intent classifier for the homebrew-cn Agent. Classify the user's latest message into exactly one route.
-
-Rules:
-- Prefer the most specific route. Do NOT default to general_homebrew when the user is clearly asking about installing or querying a specific package.
-- "是否可以用 Homebrew 安装 X" / "X 能不能用 brew 装" / "brew install X" / "brew info X" / "brew search X" are all formula_check.
-- "Homebrew 怎么安装" without a specific package is general_homebrew.
-- "Homebrew 是什么" / "brew 有什么用" is general_homebrew.
-
-Available routes:
-- model_identity: User asks about the model/AI/agent identity, e.g. "你是谁", "你是什么模型", "which model are you".
-- restore_official: User wants to restore/reset Homebrew to official upstream mirrors, e.g. "恢复官方源", "reset to official".
-- mirror_probe_deep: User wants online mirror diagnostics, speed test, or asks which mirror is fastest/best. This requires an EdgeOne sandbox to perform network probes.
-- formula_check: User asks whether a specific package/app can be installed with Homebrew, or wants a brew install/info/search command. Examples: "cc switch 是否可以用 Homebrew 安装", "brew install python", "有没有 docker-desktop".
-- brew_missing: User reports brew command not found, PATH issues, or is following up on a previous brew-not-in-PATH troubleshooting flow with terminal output or screenshots.
-- analysis_fix: User pasted error logs, shell profile content (e.g. .zshrc/.bashrc), git config, or environment info for diagnosis.
-- general_homebrew: Other Homebrew, homebrew-cn, or local environment related questions. Examples: "Homebrew 是什么", "怎么安装 Homebrew", "brew 常用命令".
-- reject: Not related to Homebrew or this agent's scope.
-
-Consider the full conversation history. If the user is replying to a previous troubleshooting step, classify accordingly. For example, if the assistant previously asked the user to run diagnostic commands for "brew not found", and the user now pasted the terminal output, route should be brew_missing, not formula_check or general_homebrew.
-
-Output ONLY a valid JSON object with this exact shape and no extra text:
-{
-  "route": "<route_name>",
-  "reason": "<brief reason in Chinese>",
-  "is_homebrew_related": true|false,
-  "needs_sandbox": true|false
-}
-
-needs_sandbox should be true only when the route is mirror_probe_deep and the user explicitly wants to run online diagnostics from a sandbox.`;
+const CLASSIFICATION_PROMPT = buildIntentClassificationPrompt();
 
 async function classifyIntentWithLLM(
   message: string,
@@ -935,13 +908,6 @@ function toSseEvent(event: unknown): Record<string, unknown> | null {
   if (e.type === 'raw_model_stream_event') {
     if (e.data?.type === 'output_text_delta') {
       return { type: 'ai_response', content: e.data.delta as string };
-    }
-    if (e.data?.type === 'model') {
-      const delta = e.data.event?.choices?.[0]?.delta;
-      const reasoning = delta?.reasoning_content || delta?.reasoning;
-      if (reasoning) {
-        return { type: 'reasoning', content: reasoning };
-      }
     }
   }
 
