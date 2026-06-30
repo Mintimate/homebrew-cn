@@ -8,6 +8,8 @@ export interface AgentEnv {
   AI_GATEWAY_BASE_URL: string;
   AI_GATEWAY_MODEL?: string;
   AI_GATEWAY_ENABLE_THINKING?: string;
+  AI_GATEWAY_HTTP_REFERER?: string;
+  AI_GATEWAY_TITLE?: string;
 }
 
 export function getAgentEnv(contextEnv: Record<string, string | undefined> | undefined): AgentEnv {
@@ -22,6 +24,8 @@ export function getAgentEnv(contextEnv: Record<string, string | undefined> | und
     AI_GATEWAY_BASE_URL: normalizeOpenAIBaseUrl(source.AI_GATEWAY_BASE_URL!),
     AI_GATEWAY_MODEL: source.AI_GATEWAY_MODEL,
     AI_GATEWAY_ENABLE_THINKING: source.AI_GATEWAY_ENABLE_THINKING,
+    AI_GATEWAY_HTTP_REFERER: source.AI_GATEWAY_HTTP_REFERER,
+    AI_GATEWAY_TITLE: source.AI_GATEWAY_TITLE,
   };
 }
 
@@ -34,6 +38,10 @@ export function createGatewayClient(env: AgentEnv) {
   const client = new OpenAI({
     apiKey: env.AI_GATEWAY_API_KEY,
     baseURL: env.AI_GATEWAY_BASE_URL,
+    defaultHeaders: {
+      'http-referer': env.AI_GATEWAY_HTTP_REFERER || 'https://brew-cn.mintimate.cn',
+      'x-title': env.AI_GATEWAY_TITLE || 'Homebrew CN Agent',
+    },
   });
   wrapOpenAIClient(client, env);
   return client;
@@ -113,13 +121,22 @@ function wrapOpenAIClient(client: OpenAI, env: AgentEnv) {
 function withVllmThinkingParams(params: any, env: AgentEnv) {
   if (!params || typeof params !== 'object') return params;
   const enableThinking = env.AI_GATEWAY_ENABLE_THINKING !== 'false';
-  return {
+  const nextParams = {
     ...params,
     chat_template_kwargs: {
       ...(params.chat_template_kwargs ?? {}),
       enable_thinking: params.chat_template_kwargs?.enable_thinking ?? enableThinking,
     },
   };
+
+  if (params.stream) {
+    nextParams.stream_options = {
+      ...(params.stream_options ?? {}),
+      include_usage: params.stream_options?.include_usage ?? true,
+    };
+  }
+
+  return nextParams;
 }
 
 function cleanRepeatedToolName(name: string): string {

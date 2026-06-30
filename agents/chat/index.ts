@@ -50,6 +50,7 @@ export async function onRequest(context: any) {
   });
 
   const env = getAgentEnv(context.env);
+  const usageTotals = createUsageAccumulator();
   const sessionPromise: Promise<Session | undefined> = (
     context.store && conversationId
       ? Promise.resolve(context.store.openaiSession(conversationId))
@@ -69,6 +70,7 @@ export async function onRequest(context: any) {
           'input.has_context': Boolean(combinedContext.trim()),
         }, async (span) => {
           const result = await classifyIntent(message, combinedContext, session, env, signal);
+          usageTotals.add(result.usage);
           setTraceAttributes(span, {
             'intent.route': result.route,
             'intent.homebrew_related': result.is_homebrew_related,
@@ -84,7 +86,7 @@ export async function onRequest(context: any) {
         });
 
         yield sseEvent({ type: 'tool_call', name: 'intent_classify', arguments: JSON.stringify({ message }) });
-        yield sseEvent({ type: 'tool_result', name: 'intent_classify', content: JSON.stringify(intent) });
+        yield sseEvent({ type: 'tool_result', name: 'intent_classify', content: JSON.stringify(publicIntent(intent)) });
 
         if (!intent.is_homebrew_related) {
           yield* withTraceStream(observability, 'direct_reject', {
@@ -95,6 +97,7 @@ export async function onRequest(context: any) {
               type: 'ai_response',
               content: '我是 homebrew-cn Agent，主要处理 Homebrew 安装、镜像源、软件包安装查询和本地环境排查。这个问题不属于 Homebrew 或本助手能力范围，因此我不能继续回答。你可以把 Homebrew 安装日志、终端报错、镜像源问题或软件包安装问题发给我。',
             });
+            yield* usageEventStream(usageTotals.snapshot());
           });
           return;
         }
@@ -103,7 +106,7 @@ export async function onRequest(context: any) {
           yield* withTraceStream(observability, 'direct_model_identity', {
             'agent.step': 'model_identity',
             'intent.route': intent.route,
-          }, runDirectModelIdentity);
+          }, () => withUsageFooter(runDirectModelIdentity(), usageTotals));
           return;
         }
 
@@ -111,7 +114,7 @@ export async function onRequest(context: any) {
           yield* withTraceStream(observability, 'direct_restore_official', {
             'agent.step': 'restore_official',
             'intent.route': intent.route,
-          }, runDirectRestoreOfficial);
+          }, () => withUsageFooter(runDirectRestoreOfficial(), usageTotals));
           return;
         }
 
@@ -121,7 +124,7 @@ export async function onRequest(context: any) {
             'intent.route': intent.route,
             'tool.name': 'mirror_probe_deep',
             'tool.sandbox_available': Boolean(context.sandbox),
-          }, (span) => runDirectDiagnostics({ sandbox: context.sandbox, signal, traceSpan: span }));
+          }, (span) => withUsageFooter(runDirectDiagnostics({ sandbox: context.sandbox, signal, traceSpan: span }), usageTotals));
           return;
         }
 
@@ -130,7 +133,7 @@ export async function onRequest(context: any) {
             'agent.step': 'formula_check',
             'intent.route': intent.route,
             'tool.name': 'formula_check',
-          }, (span) => runDirectFormulaCheck({ message, extraContext: combinedContext, signal, traceSpan: span }));
+          }, (span) => withUsageFooter(runDirectFormulaCheck({ message, extraContext: combinedContext, signal, traceSpan: span }), usageTotals));
           return;
         }
 
@@ -139,12 +142,12 @@ export async function onRequest(context: any) {
             'agent.step': 'brew_missing',
             'intent.route': intent.route,
             'input.image_count': pastedImages.length,
-          }, () => runBrewMissingTroubleshooting({
+          }, () => withUsageFooter(runBrewMissingTroubleshooting({
             message,
             extraContext: combinedContext,
             pastedImageCount: pastedImages.length,
             signal,
-          }));
+          }), usageTotals));
           return;
         }
 
@@ -153,7 +156,7 @@ export async function onRequest(context: any) {
             'agent.step': 'analysis_fix',
             'intent.route': intent.route,
             'tool.name': 'analyze',
-          }, (span) => runDirectAnalysisAndFix({ message, extraContext: combinedContext, signal, traceSpan: span }));
+          }, (span) => withUsageFooter(runDirectAnalysisAndFix({ message, extraContext: combinedContext, signal, traceSpan: span }), usageTotals));
           return;
         }
 
@@ -233,9 +236,8 @@ export async function onRequest(context: any) {
           endTraceSpan(runSpan);
         }
 
-        if (usage) {
-          yield sseEvent({ type: 'usage', ...usage });
-        }
+        usageTotals.add(usage);
+        yield* usageEventStream(usageTotals.snapshot());
 
       } catch (error) {
         const err = error as Error;
@@ -259,6 +261,7 @@ export async function onRequest(context: any) {
 
 type TraceAttributeValue = string | number | boolean;
 type TraceAttributes = Record<string, TraceAttributeValue>;
+type UsagePayload = Record<string, number>;
 
 interface TraceSpan {
   setAttributes?: (attributes: TraceAttributes) => void;
@@ -403,6 +406,50 @@ function usageAttributes(usage: any): TraceAttributes {
   };
 }
 
+function createUsageAccumulator() {
+  const totals: UsagePayload = {
+    input_tokens: 0,
+    output_tokens: 0,
+    total_tokens: 0,
+  };
+  let hasUsage = false;
+
+  return {
+    add(usage: UsagePayload | null | undefined) {
+      if (!usage) return;
+      hasUsage = true;
+      totals.input_tokens += usage.input_tokens ?? 0;
+      totals.output_tokens += usage.output_tokens ?? 0;
+      totals.total_tokens += usage.total_tokens ?? ((usage.input_tokens ?? 0) + (usage.output_tokens ?? 0));
+      if (typeof usage.reasoning_tokens === 'number') {
+        totals.reasoning_tokens = (totals.reasoning_tokens ?? 0) + usage.reasoning_tokens;
+      }
+      if (typeof usage.cached_tokens === 'number') {
+        totals.cached_tokens = (totals.cached_tokens ?? 0) + usage.cached_tokens;
+      }
+    },
+    snapshot(): UsagePayload | null {
+      return hasUsage ? { ...totals } : null;
+    },
+  };
+}
+
+async function* withUsageFooter(
+  events: AsyncIterable<string> | Iterable<string>,
+  usageTotals: ReturnType<typeof createUsageAccumulator>,
+): AsyncGenerator<string> {
+  for await (const event of events) {
+    yield event;
+  }
+  yield* usageEventStream(usageTotals.snapshot());
+}
+
+function* usageEventStream(usage: UsagePayload | null): Generator<string> {
+  if (usage) {
+    yield sseEvent({ type: 'usage', ...usage });
+  }
+}
+
 type IntentRoute =
   | 'model_identity'
   | 'restore_official'
@@ -419,6 +466,17 @@ interface IntentClassification {
   needs_sandbox: boolean;
   route: IntentRoute;
   reason: string;
+  usage?: Record<string, number> | null;
+}
+
+function publicIntent(intent: IntentClassification) {
+  return {
+    ok: intent.ok,
+    is_homebrew_related: intent.is_homebrew_related,
+    needs_sandbox: intent.needs_sandbox,
+    route: intent.route,
+    reason: intent.reason,
+  };
 }
 
 async function classifyIntent(
@@ -438,6 +496,7 @@ async function classifyIntent(
       needs_sandbox: false,
       route: 'general_homebrew',
       reason: '意图分类 LLM 调用失败，降级为通用 Homebrew 问答路径。',
+      usage: null,
     };
   }
 }
@@ -518,6 +577,7 @@ async function classifyIntentWithLLM(
     needs_sandbox: needsSandbox,
     route,
     reason: typeof parsed?.reason === 'string' ? parsed.reason : '由 LLM 根据上下文判断。',
+    usage: extractUsage(response),
   };
 }
 
@@ -908,24 +968,51 @@ function toSseEvent(event: unknown): Record<string, unknown> | null {
   return null;
 }
 
-function extractUsage(value: unknown): Record<string, number> | null {
+function extractUsage(value: unknown): UsagePayload | null {
   const v = value as any;
-  const usage = v?.usage ?? v?.data?.usage ?? v?.item?.rawItem?.usage;
+  const usage =
+    v?.usage ??
+    v?.data?.usage ??
+    v?.data?.event?.usage ??
+    v?.item?.rawItem?.usage ??
+    v?.response?.usage;
   if (!usage) return null;
 
   const inputTokens = usage.input_tokens ?? usage.prompt_tokens ?? usage.inputTokens;
   const outputTokens = usage.output_tokens ?? usage.completion_tokens ?? usage.outputTokens;
   const totalTokens = usage.total_tokens ?? usage.totalTokens;
+  const reasoningTokens =
+    usage.reasoning_tokens ??
+    usage.reasoningTokens ??
+    usage.completion_tokens_details?.reasoning_tokens ??
+    usage.output_tokens_details?.reasoning_tokens;
+  const cachedTokens =
+    usage.cached_tokens ??
+    usage.cachedTokens ??
+    usage.prompt_tokens_details?.cached_tokens ??
+    usage.input_tokens_details?.cached_tokens;
 
   if (inputTokens === undefined && outputTokens === undefined && totalTokens === undefined) {
     return null;
   }
 
-  return {
+  const normalized: UsagePayload = {
     input_tokens: typeof inputTokens === 'number' ? inputTokens : 0,
     output_tokens: typeof outputTokens === 'number' ? outputTokens : 0,
     total_tokens: typeof totalTokens === 'number' ? totalTokens : 0,
   };
+
+  if (!normalized.total_tokens) {
+    normalized.total_tokens = normalized.input_tokens + normalized.output_tokens;
+  }
+  if (typeof reasoningTokens === 'number') {
+    normalized.reasoning_tokens = reasoningTokens;
+  }
+  if (typeof cachedTokens === 'number') {
+    normalized.cached_tokens = cachedTokens;
+  }
+
+  return normalized;
 }
 
 interface PastedImage {
