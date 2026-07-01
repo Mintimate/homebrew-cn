@@ -117,19 +117,21 @@ export function renderPage() {
                     <div class="panel-footer-links">
                         <span class="footer-hint">💡 自动适配 Intel/Apple Silicon (ARM64) · 运行后可交互选择镜像源</span>
                         <div class="footer-actions">
-                            <a href="https://www.bilibili.com/video/BV1AEX9BsELi/" target="_blank" class="footer-action-link link-bili">📺 视频安装教程 (点个关注，助力破1w粉丝)</a>
-                            <a href="https://ifdian.net/a/mintimate" target="_blank" class="footer-action-link link-afd">❤ 去爱发电支持</a>
+                            <a href="https://www.bilibili.com/video/BV1AEX9BsELi/" target="_blank" rel="noopener noreferrer" class="footer-action-link link-bili">📺 视频安装教程 (点个关注，助力破1w粉丝)</a>
+                            <a href="https://ifdian.net/a/mintimate" target="_blank" rel="noopener noreferrer" class="footer-action-link link-afd">❤ 去爱发电支持</a>
                         </div>
                     </div>
                 </div>
                 
                 <div class="terminal-panel" id="panel-ai-chat" style="display:none">
                     <div class="ai-chat-container">
-                        <!-- 分享对话按钮 -->
-                        <button class="chat-share-btn" onclick="shareConversation()" title="分享对话为图片">
-                            <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
-                            <span>分享对话</span>
-                        </button>
+                        <div class="chat-top-actions">
+                            <a href="https://www.mintimate.cn/2026/06/30/workbuddyMakeAgent" target="_blank" rel="noopener noreferrer" class="chat-doc-link">🤖 Agent 实现教程</a>
+                            <button class="chat-share-btn" onclick="shareConversation()" title="分享对话为图片">
+                                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
+                                <span>分享对话</span>
+                            </button>
+                        </div>
                         
                         <div class="chat-messages" id="chat-messages">
                             <div class="message system">

@@ -1038,6 +1038,36 @@ export function getStyles() {
             margin-top: auto;
         }
 
+        .chat-top-actions {
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+            gap: 10px;
+            flex-wrap: wrap;
+            margin-bottom: 10px;
+        }
+
+        .chat-doc-link {
+            display: inline-flex;
+            align-items: center;
+            min-height: 31px;
+            padding: 6px 12px;
+            border: 1px solid rgba(42, 167, 160, 0.22);
+            border-radius: 8px;
+            background: rgba(42, 167, 160, 0.08);
+            color: #6bd2ca;
+            font-size: 0.78rem;
+            font-weight: 700;
+            text-decoration: none !important;
+            transition: all 0.2s ease;
+        }
+        .chat-doc-link:hover {
+            border-color: rgba(42, 167, 160, 0.5);
+            background: rgba(42, 167, 160, 0.14);
+            color: #8ee8e2;
+            transform: translateY(-1px);
+        }
+
         .chat-quick-flags {
             display: flex;
             gap: 8px;
@@ -1823,10 +1853,6 @@ export function getStyles() {
             flex-direction: column;
         }
         .chat-share-btn {
-            position: absolute;
-            top: 14px;
-            right: 20px;
-            z-index: 10;
             display: inline-flex;
             align-items: center;
             gap: 6px;
@@ -1935,6 +1961,16 @@ export function getStyles() {
             background: rgba(220, 122, 28, 0.06);
             border-color: var(--accent);
             color: var(--accent);
+        }
+        html[data-theme="light"] .chat-doc-link {
+            background: rgba(42, 167, 160, 0.08);
+            border-color: rgba(42, 167, 160, 0.22);
+            color: #247b76;
+        }
+        html[data-theme="light"] .chat-doc-link:hover {
+            background: rgba(42, 167, 160, 0.13);
+            border-color: rgba(42, 167, 160, 0.4);
+            color: #176661;
         }
         html[data-theme="light"] .chat-share-btn {
             background: rgba(241, 237, 233, 0.8);
