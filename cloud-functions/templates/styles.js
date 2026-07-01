@@ -2152,6 +2152,196 @@ export function getStyles() {
             opacity: 1;
             transform: translateY(0);
         }
+
+        /* ─── 移动端终端面板优化 ─── */
+        @media (max-width: 640px) {
+            .container {
+                padding: 22px 12px 32px;
+            }
+
+            .hero {
+                padding: 30px 0 22px;
+            }
+
+            .hero-top {
+                flex-wrap: wrap;
+                gap: 10px;
+                margin-bottom: 18px;
+            }
+
+            h1 {
+                font-size: 2rem;
+                line-height: 1.18;
+                margin-bottom: 12px;
+            }
+
+            .hero-desc {
+                font-size: 0.95rem;
+                line-height: 1.55;
+            }
+
+            .terminal-dashboard {
+                width: 100%;
+                height: auto;
+                min-height: 0;
+                max-height: none;
+                resize: none;
+                border-radius: 14px;
+                margin-bottom: 28px;
+            }
+
+            .terminal-header {
+                display: grid;
+                grid-template-columns: auto minmax(0, 1fr);
+                gap: 10px;
+                align-items: center;
+                padding: 10px;
+            }
+
+            .terminal-dots {
+                width: auto;
+                gap: 6px;
+            }
+
+            .terminal-dot {
+                width: 10px;
+                height: 10px;
+            }
+
+            .terminal-tabs {
+                min-width: 0;
+                width: 100%;
+            }
+
+            .terminal-tab {
+                flex: 1 1 0;
+                justify-content: center;
+                min-width: 0;
+                padding: 7px 8px;
+                gap: 6px;
+                font-size: 0.78rem;
+            }
+
+            .terminal-tab .tab-icon {
+                flex-shrink: 0;
+            }
+
+            .terminal-status {
+                display: none;
+            }
+
+            .terminal-body {
+                padding: 18px 14px;
+                overflow: visible;
+            }
+
+            .terminal-panel,
+            .terminal-panel.active {
+                height: auto;
+                min-width: 0;
+            }
+
+            .os-selector-wrapper {
+                display: block;
+                margin-bottom: 20px;
+                padding-bottom: 18px;
+            }
+
+            .selector-label {
+                display: block;
+                margin-bottom: 10px;
+            }
+
+            .os-segmented-control {
+                width: 100%;
+            }
+
+            .os-segment {
+                flex: 1 1 0;
+                min-width: 0;
+                padding: 8px 10px;
+                text-align: center;
+            }
+
+            .cmd-section {
+                margin-bottom: 18px;
+            }
+
+            .cmd-header {
+                gap: 10px;
+            }
+
+            .cmd-label {
+                min-width: 0;
+            }
+
+            .copy-btn-modern {
+                flex-shrink: 0;
+                padding: 6px 10px;
+            }
+
+            .cmd-box-modern {
+                width: 100%;
+                max-width: 100%;
+                padding: 14px;
+                border-radius: 9px;
+                font-size: 0.8rem;
+                line-height: 1.7;
+                overflow-x: auto;
+                -webkit-overflow-scrolling: touch;
+            }
+
+            .cmd-box-modern .prompt {
+                display: inline-block;
+                margin-right: 8px;
+            }
+
+            .panel-hint,
+            .footer-hint {
+                font-size: 0.78rem;
+                line-height: 1.6;
+            }
+
+            .panel-footer-links {
+                align-items: stretch;
+                gap: 14px;
+            }
+
+            .footer-actions {
+                width: 100%;
+                flex-direction: column;
+                gap: 8px;
+            }
+
+            .footer-action-link {
+                line-height: 1.45;
+            }
+
+            .card {
+                padding: 20px;
+                border-radius: 12px;
+            }
+        }
+
+        @media (max-width: 380px) {
+            .container {
+                padding-inline: 10px;
+            }
+
+            .terminal-body {
+                padding: 16px 12px;
+            }
+
+            .terminal-tab {
+                font-size: 0.74rem;
+                padding-inline: 6px;
+            }
+
+            .cmd-box-modern {
+                font-size: 0.76rem;
+                padding: 12px;
+            }
+        }
     </style>
   `;
 }
