@@ -1042,6 +1042,7 @@ export function getStyles() {
             font-weight: 600;
             text-align: center;
             width: fit-content;
+            border: 1px solid transparent;
         }
         .tool-badge.ok { background: rgba(39, 201, 63, 0.12); color: var(--green); }
         .tool-badge.warn { background: rgba(244, 180, 0, 0.12); color: var(--gold); }
@@ -2169,18 +2170,18 @@ export function getStyles() {
             border-color: rgba(220, 122, 28, 0.10);
         }
         html[data-theme="light"] .agent-tool-chip {
-            background: rgba(255, 255, 255, 0.5);
-            border-color: rgba(220, 122, 28, 0.1);
-            color: #8a7a6b;
+            background: #fffaf6;
+            border-color: #ead8ca;
+            color: #6f5d50;
         }
         html[data-theme="light"] .agent-tool-chip.running {
-            background: rgba(220, 122, 28, 0.08);
-            border-color: rgba(220, 122, 28, 0.34);
+            background: #fff0e4;
+            border-color: #efc7aa;
             color: #b85f00;
         }
         html[data-theme="light"] .agent-tool-chip.success {
-            background: rgba(46, 159, 98, 0.08);
-            border-color: rgba(46, 159, 98, 0.28);
+            background: #edf8f0;
+            border-color: #bfe8ca;
             color: #218653;
         }
         html[data-theme="light"] .agent-tool-chip.flash {
@@ -2201,6 +2202,26 @@ export function getStyles() {
             color: #2c221e;
             background: transparent;
         }
+        html[data-theme="light"] .agent-text-content table {
+            background: #fffaf6;
+            border-color: #ead8ca;
+            box-shadow: none;
+        }
+        html[data-theme="light"] .agent-text-content th {
+            background: #f4ebe4;
+            color: #4a382d;
+            border-color: #ead8ca;
+        }
+        html[data-theme="light"] .agent-text-content td {
+            color: #3f3027;
+            border-color: #efe1d5;
+        }
+        html[data-theme="light"] .agent-text-content tr:nth-child(even) td {
+            background: #fbf4ee;
+        }
+        html[data-theme="light"] .agent-text-content tr:hover td {
+            background: #fff1e5;
+        }
         html[data-theme="light"] .agent-usage {
             border-top-color: rgba(220, 122, 28, 0.12);
             color: #8a7a6b;
@@ -2213,81 +2234,131 @@ export function getStyles() {
 
         /* Thinking & Tool Logs */
         html[data-theme="light"] .thinking-wrapper {
-            background: rgba(0, 0, 0, 0.015);
-            border-color: rgba(220, 122, 28, 0.08);
+            background: #fffaf6;
+            border-color: #ead8ca;
         }
         html[data-theme="light"] .thinking-header {
-            background: rgba(0, 0, 0, 0.01);
-            border-bottom-color: rgba(220, 122, 28, 0.04);
+            background: #f4ebe4;
+            border-bottom-color: #ead8ca;
             color: #5c544d;
         }
         html[data-theme="light"] .thinking-header svg {
             color: #8a7a6b;
         }
         html[data-theme="light"] .thinking-content {
-            background: rgba(0, 0, 0, 0.015);
-            border-bottom-color: rgba(220, 122, 28, 0.04);
+            background: #fff6ef;
+            border-bottom-color: #ead8ca;
             color: #5c544d;
         }
         
         /* Tool Calls */
         html[data-theme="light"] .tool-call-log {
-            border-color: rgba(220, 122, 28, 0.08);
-            background: rgba(0, 0, 0, 0.01);
+            border-color: #ead8ca;
+            background: #fffaf6;
+            box-shadow: inset 0 1px 0 rgba(255,255,255,0.7);
         }
         html[data-theme="light"] .tool-call-header.running {
-            background: rgba(220, 122, 28, 0.04);
+            background: #fff1e5;
+            color: #b85f00;
         }
         html[data-theme="light"] .tool-call-header.success {
-            background: rgba(39, 201, 63, 0.04);
+            background: #edf8f0;
+            color: #218653;
         }
         html[data-theme="light"] .tool-call-header.failed {
-            background: rgba(239, 68, 68, 0.04);
+            background: #fff0f0;
+            color: #c24141;
         }
         html[data-theme="light"] .tool-time {
             color: #8a7a6b;
         }
         html[data-theme="light"] .tool-call-args {
-            border-top-color: rgba(220, 122, 28, 0.04);
+            border-top-color: #ead8ca;
         }
         html[data-theme="light"] .tool-call-args summary {
-            background: rgba(220, 122, 28, 0.01);
-            color: #8a7a6b;
+            background: #fbf2ea;
+            color: #6f5d50;
         }
         html[data-theme="light"] .tool-call-args summary:hover {
             color: var(--accent);
         }
         html[data-theme="light"] .tool-call-output {
-            background: #f1ede9;
-            color: #2c221e;
-            border-top-color: rgba(220, 122, 28, 0.04);
+            background: #f5eee8;
+            color: #352820;
+            border-top-color: #ead8ca;
         }
         html[data-theme="light"] .tool-rich-body {
-            background: rgba(0, 0, 0, 0.015);
-            border-top-color: rgba(220, 122, 28, 0.06);
+            background: #fff6ef;
+            border-top-color: #ead8ca;
         }
         html[data-theme="light"] .tool-raw-details {
-            border-top-color: rgba(220, 122, 28, 0.06);
+            border-top-color: #ead8ca;
         }
         html[data-theme="light"] .tool-raw-details summary {
-            background: rgba(220, 122, 28, 0.015);
-            color: #8a7a6b;
+            background: #fbf2ea;
+            color: #6f5d50;
         }
         html[data-theme="light"] .tool-raw-details summary:hover {
             color: var(--accent);
         }
         html[data-theme="light"] .tool-raw-output {
-            background: #f1ede9;
-            color: #2c221e;
-            border-top-color: rgba(220, 122, 28, 0.05);
+            background: #f5eee8;
+            color: #352820;
+            border-top-color: #ead8ca;
         }
         html[data-theme="light"] .tool-grid-head {
-            background: rgba(220, 122, 28, 0.05);
-            color: #2c221e;
+            background: #f4ebe4;
+            color: #4a382d;
+            border: 1px solid #ead8ca;
         }
         html[data-theme="light"] .tool-row {
-            border-bottom-color: rgba(220, 122, 28, 0.04);
-            color: #5c544d;
+            border-bottom-color: #efe1d5;
+            color: #5a4639;
+        }
+        html[data-theme="light"] .tool-row:hover {
+            background: #fffaf6;
+        }
+        html[data-theme="light"] .tool-main {
+            color: #3f3027;
+        }
+        html[data-theme="light"] .tool-main strong {
+            color: #8d4308;
+        }
+        html[data-theme="light"] .tool-main span {
+            color: #6f5d50;
+        }
+        html[data-theme="light"] .tool-mono {
+            color: #6f5d50;
+        }
+        html[data-theme="light"] .tool-badge.ok {
+            background: #e7f6eb;
+            border-color: #bfe8ca;
+            color: #218653;
+        }
+        html[data-theme="light"] .tool-badge.warn {
+            background: #fff3c4;
+            border-color: #f6d874;
+            color: #9a6500;
+        }
+        html[data-theme="light"] .tool-badge.bad {
+            background: #ffe3e3;
+            border-color: #f5b5b5;
+            color: #b83232;
+        }
+        html[data-theme="light"] .tool-badge.info {
+            background: #fff0e4;
+            border-color: #efc7aa;
+            color: #b85f00;
+        }
+        html[data-theme="light"] .tool-copy-btn {
+            background: #fff0e4;
+            border-color: #efc7aa;
+            color: #b85f00;
+        }
+        html[data-theme="light"] .tool-copy-btn:hover {
+            background: #ffe5d0;
+            border-color: #e59f72;
+            color: #8d4308;
         }
 
         /* ─── 隐藏彩蛋样式 ─── */
