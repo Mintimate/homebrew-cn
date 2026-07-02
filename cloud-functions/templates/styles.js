@@ -951,6 +951,38 @@ export function getStyles() {
             border-top: 1px solid rgba(255, 184, 77, 0.06);
         }
 
+        .tool-raw-details {
+            border-top: 1px solid rgba(255, 184, 77, 0.06);
+        }
+
+        .tool-raw-details summary {
+            padding: 9px 12px;
+            color: #8a7a6b;
+            font-size: 0.78rem;
+            font-weight: 600;
+            cursor: pointer;
+            user-select: none;
+            background: rgba(255, 184, 77, 0.015);
+        }
+
+        .tool-raw-details summary:hover {
+            color: #ffe7ca;
+        }
+
+        .tool-raw-output {
+            margin: 0;
+            padding: 12px;
+            max-height: 220px;
+            overflow: auto;
+            background: #080605;
+            color: #a8957d;
+            border-top: 1px solid rgba(255, 184, 77, 0.04);
+            font-family: var(--font-mono);
+            font-size: 0.78rem;
+            line-height: 1.55;
+            white-space: pre;
+        }
+
         .tool-empty {
             padding: 16px;
             text-align: center;
@@ -2233,6 +2265,21 @@ export function getStyles() {
         html[data-theme="light"] .tool-rich-body {
             background: rgba(0, 0, 0, 0.015);
             border-top-color: rgba(220, 122, 28, 0.06);
+        }
+        html[data-theme="light"] .tool-raw-details {
+            border-top-color: rgba(220, 122, 28, 0.06);
+        }
+        html[data-theme="light"] .tool-raw-details summary {
+            background: rgba(220, 122, 28, 0.015);
+            color: #8a7a6b;
+        }
+        html[data-theme="light"] .tool-raw-details summary:hover {
+            color: var(--accent);
+        }
+        html[data-theme="light"] .tool-raw-output {
+            background: #f1ede9;
+            color: #2c221e;
+            border-top-color: rgba(220, 122, 28, 0.05);
         }
         html[data-theme="light"] .tool-grid-head {
             background: rgba(220, 122, 28, 0.05);
