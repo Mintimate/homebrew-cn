@@ -8,7 +8,7 @@ import {
 } from '../_model';
 import { createLogger, createSSEResponse, jsonResponse, sseEvent, truncateText } from '../_shared';
 import { buildSystemPrompt, buildUserInput } from './_prompt';
-import { buildIntentClassificationPrompt } from './_skill';
+import { HOMEBREW_CN_INSTALL_COMMAND, buildIntentClassificationPrompt } from './_skill';
 import {
   analyzeHomebrewText,
   checkHomebrewFormulaIndex,
@@ -542,7 +542,9 @@ async function classifyIntentWithLLM(
       ? (rawRoute as IntentRoute)
       : 'general_homebrew';
   const isHomebrewRelated = typeof parsed?.is_homebrew_related === 'boolean' ? parsed.is_homebrew_related : route !== 'reject';
-  const needsSandbox = typeof parsed?.needs_sandbox === 'boolean' ? parsed.needs_sandbox : route === 'mirror_probe_deep';
+  const needsSandbox = route === 'mirror_probe_deep'
+    ? true
+    : (typeof parsed?.needs_sandbox === 'boolean' ? parsed.needs_sandbox : false);
 
   return {
     ok: true,
@@ -726,6 +728,15 @@ function summarizeDiagnostics(result: Awaited<ReturnType<typeof diagnoseHomebrew
 
   if (best) {
     lines.push(`当前建议优先选择 **${best.name}**，延迟约 **${best.latency_ms} ms**，同步状态为 **${formatSyncStatus(best.sync_status)}**。`);
+    const installChoice = mirrorInstallChoice(best.name);
+    if (installChoice) {
+      lines.push('');
+      lines.push(`安装或切换镜像时建议选择 **${installChoice.label}**。运行脚本后在镜像源选择处输入 **${installChoice.choice}**：`);
+      lines.push('');
+      lines.push('```bash');
+      lines.push(HOMEBREW_CN_INSTALL_COMMAND);
+      lines.push('```');
+    }
   } else {
     lines.push('本次没有检测到可直接访问的镜像源，建议检查本地网络、代理或稍后重试。');
   }
@@ -737,6 +748,14 @@ function summarizeDiagnostics(result: Awaited<ReturnType<typeof diagnoseHomebrew
   lines.push('');
   lines.push('完整结果已在当前对话的工具卡片中展开，可直接复制报告用于排查。');
   return lines.join('\n');
+}
+
+function mirrorInstallChoice(name: string) {
+  if (name.includes('USTC') || name.includes('中科大')) return { choice: '1', label: '中国科学技术大学 USTC 镜像' };
+  if (name.includes('Aliyun') || name.includes('阿里云')) return { choice: '2', label: '阿里云 Aliyun 镜像' };
+  if (name.includes('TUNA') || name.includes('清华')) return { choice: '3', label: '清华 TUNA 镜像' };
+  if (name.includes('Tencent') || name.includes('腾讯云')) return { choice: '5', label: '腾讯云镜像（隐藏选项，完整克隆）' };
+  return null;
 }
 
 function* runDirectAnalysisAndFix(options: {

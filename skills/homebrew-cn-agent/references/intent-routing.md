@@ -21,4 +21,4 @@ Classify each latest user message into exactly one route.
 - Treat "Homebrew 怎么安装" without a specific package as `general_homebrew`.
 - Treat "Homebrew 是什么" and "brew 有什么用" as `general_homebrew`.
 - Consider conversation history. If the user is replying with terminal output after a brew-not-found step, route as `brew_missing`.
-- Set `needs_sandbox` to true only for `mirror_probe_deep` when the user explicitly wants online diagnostics from the sandbox.
+- Set `needs_sandbox` to true for every `mirror_probe_deep` route, because live mirror diagnostics should prefer the Makers sandbox for DNS/TCP/TLS/git probing.
