@@ -126,6 +126,7 @@ export function renderPage() {
                 <div class="terminal-panel" id="panel-ai-chat" style="display:none">
                     <div class="ai-chat-container">
                         <div class="chat-top-actions">
+                            <div class="agent-tool-panel" id="agent-tool-panel" aria-label="Agent 工具状态"></div>
                             <a href="https://www.mintimate.cn/2026/06/30/workbuddyMakeAgent" target="_blank" rel="noopener noreferrer" class="chat-doc-link">🤖 Agent 实现教程</a>
                             <button class="chat-share-btn" onclick="shareConversation()" title="分享对话为图片">
                                 <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>

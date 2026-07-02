@@ -16,6 +16,8 @@ export function getStyles() {
             --code-bg: #fff3d9;
             --radius: 16px;
             --font-mono: "SF Mono", "Fira Code", "JetBrains Mono", Consolas, monospace;
+            --agent-avatar-size: 32px;
+            --agent-row-gap: 12px;
         }
 
         :root[data-theme="dark"] {
@@ -521,7 +523,7 @@ export function getStyles() {
         /* ─── Assistant Message Row (AI 消息结构) ─── */
         .agent-message-row {
             display: flex;
-            gap: 12px;
+            gap: var(--agent-row-gap);
             margin-bottom: 20px;
             align-items: flex-start;
             width: 100%;
@@ -529,8 +531,8 @@ export function getStyles() {
         }
 
         .agent-avatar {
-            width: 32px;
-            height: 32px;
+            width: var(--agent-avatar-size);
+            height: var(--agent-avatar-size);
             border-radius: 50%;
             background: rgba(255, 140, 66, 0.08);
             border: 1px solid rgba(255, 140, 66, 0.2);
@@ -553,6 +555,95 @@ export function getStyles() {
             display: flex;
             flex-direction: column;
             gap: 10px;
+        }
+
+        .agent-tool-panel {
+            display: grid;
+            grid-template-columns: repeat(5, minmax(0, 1fr));
+            gap: 8px;
+            flex: 1 1 520px;
+            min-width: 0;
+            margin: 0;
+            padding: 0;
+            overflow: visible;
+            scrollbar-width: none;
+        }
+
+        .agent-tool-panel::-webkit-scrollbar {
+            display: none;
+        }
+
+        .agent-tool-chip {
+            min-width: 0;
+            height: 38px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            padding: 6px 10px;
+            border: 1px solid rgba(255, 184, 77, 0.08);
+            border-radius: 8px;
+            background: rgba(255, 255, 255, 0.025);
+            color: #8f7f6c;
+            transition: border-color 0.18s, background 0.18s, color 0.18s, box-shadow 0.18s, transform 0.18s;
+        }
+
+        .agent-tool-chip.running {
+            border-color: rgba(255, 140, 66, 0.42);
+            background: rgba(255, 140, 66, 0.08);
+            color: var(--accent);
+        }
+
+        .agent-tool-chip.success {
+            border-color: rgba(46, 159, 98, 0.34);
+            background: rgba(46, 159, 98, 0.06);
+            color: var(--green);
+        }
+
+        .agent-tool-chip.flash {
+            transform: translateY(-1px);
+            box-shadow: 0 0 0 3px rgba(255, 140, 66, 0.12);
+        }
+
+        .tool-chip-dot {
+            width: 8px;
+            height: 8px;
+            border-radius: 50%;
+            background: currentColor;
+            opacity: 0.45;
+            flex-shrink: 0;
+        }
+
+        .agent-tool-chip.running .tool-chip-dot {
+            opacity: 1;
+            animation: pulse 1.1s infinite;
+        }
+
+        .agent-tool-chip.success .tool-chip-dot {
+            opacity: 1;
+        }
+
+        .tool-chip-text {
+            min-width: 0;
+            display: flex;
+            flex-direction: column;
+            line-height: 1.2;
+        }
+
+        .tool-chip-text strong {
+            font-size: 0.78rem;
+            font-weight: 700;
+            letter-spacing: 0;
+            white-space: nowrap;
+        }
+
+        .tool-chip-text small {
+            margin-top: 2px;
+            font-size: 0.68rem;
+            color: currentColor;
+            opacity: 0.7;
+            white-space: nowrap;
+            overflow: hidden;
+            text-overflow: ellipsis;
         }
 
         /* 最终回答的文本内容 */
@@ -1041,15 +1132,16 @@ export function getStyles() {
         .chat-top-actions {
             display: flex;
             align-items: center;
-            justify-content: flex-end;
+            justify-content: space-between;
             gap: 10px;
-            flex-wrap: wrap;
+            flex-wrap: nowrap;
             margin-bottom: 10px;
         }
 
         .chat-doc-link {
             display: inline-flex;
             align-items: center;
+            flex-shrink: 0;
             min-height: 31px;
             padding: 6px 12px;
             border: 1px solid rgba(42, 167, 160, 0.22);
@@ -1855,6 +1947,7 @@ export function getStyles() {
         .chat-share-btn {
             display: inline-flex;
             align-items: center;
+            flex-shrink: 0;
             gap: 6px;
             padding: 6px 12px;
             background: rgba(25, 20, 17, 0.75);
@@ -2042,6 +2135,24 @@ export function getStyles() {
         html[data-theme="light"] .agent-bubble {
             background: #faf8f6;
             border-color: rgba(220, 122, 28, 0.10);
+        }
+        html[data-theme="light"] .agent-tool-chip {
+            background: rgba(255, 255, 255, 0.5);
+            border-color: rgba(220, 122, 28, 0.1);
+            color: #8a7a6b;
+        }
+        html[data-theme="light"] .agent-tool-chip.running {
+            background: rgba(220, 122, 28, 0.08);
+            border-color: rgba(220, 122, 28, 0.34);
+            color: #b85f00;
+        }
+        html[data-theme="light"] .agent-tool-chip.success {
+            background: rgba(46, 159, 98, 0.08);
+            border-color: rgba(46, 159, 98, 0.28);
+            color: #218653;
+        }
+        html[data-theme="light"] .agent-tool-chip.flash {
+            box-shadow: 0 0 0 3px rgba(220, 122, 28, 0.12);
         }
         html[data-theme="light"] .agent-text-content {
             color: #2c221e;
@@ -2233,6 +2344,22 @@ export function getStyles() {
             .terminal-body {
                 padding: 18px 14px;
                 overflow: visible;
+            }
+
+            .chat-top-actions {
+                flex-wrap: wrap;
+                align-items: stretch;
+            }
+
+            .agent-tool-panel {
+                display: flex;
+                flex: 1 0 100%;
+                width: 100%;
+                overflow-x: auto;
+            }
+
+            .agent-tool-chip {
+                min-width: 150px;
             }
 
             .terminal-panel,
