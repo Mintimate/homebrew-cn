@@ -1,0 +1,9 @@
+# 允许传统搜索引擎抓取并收录公开页面。
+User-agent: *
+Allow: /
+Disallow: /api/
+Disallow: /chat
+Disallow: /install
+Disallow: /install.sh
+
+Sitemap: https://brew-cn.mintimate.cn/sitemap.xml

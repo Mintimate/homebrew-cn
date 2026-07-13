@@ -16,8 +16,25 @@ export function renderPage() {
     <title>Homebrew CN 镜像一键安装 — 国内极速安装 Homebrew (macOS/Linux)</title>
     <meta name="description" content="专为国内用户优化的 Homebrew 一键安装脚本，支持 macOS 和 Linux，内置中科大 USTC、阿里云、清华 TUNA 镜像源，告别龟速下载。">
     <meta name="keywords" content="Homebrew,安装,镜像,国内,macOS,Linux,brew,USTC,TUNA,阿里云,linuxbrew">
+    <meta name="robots" content="index,follow,max-image-preview:large,max-snippet:-1,max-video-preview:-1">
+    <link rel="canonical" href="https://brew-cn.mintimate.cn/">
+    <meta property="og:type" content="website">
+    <meta property="og:locale" content="zh_CN">
+    <meta property="og:site_name" content="Homebrew CN">
+    <meta property="og:title" content="Homebrew CN 镜像一键安装 — 国内极速安装 Homebrew">
+    <meta property="og:description" content="面向国内网络环境的 Homebrew 一键安装脚本，支持 macOS、Linux 与 USTC、阿里云、清华 TUNA 镜像源。">
+    <meta property="og:url" content="https://brew-cn.mintimate.cn/">
+    <meta property="og:image" content="https://brew-cn.mintimate.cn/assets/startShell.webp">
+    <meta property="og:image:width" content="2382">
+    <meta property="og:image:height" content="1056">
+    <meta property="og:image:alt" content="Homebrew CN 安装脚本终端界面">
+    <meta name="twitter:card" content="summary">
+    <meta name="twitter:title" content="Homebrew CN 镜像一键安装">
+    <meta name="twitter:description" content="面向国内网络环境的 Homebrew 一键安装脚本，支持 macOS、Linux 与多个镜像源。">
+    <meta name="twitter:image" content="https://brew-cn.mintimate.cn/assets/startShell.webp">
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
+    <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://brew-cn.mintimate.cn/#website","url":"https://brew-cn.mintimate.cn/","name":"Homebrew CN","inLanguage":"zh-CN"},{"@type":"WebPage","@id":"https://brew-cn.mintimate.cn/#webpage","url":"https://brew-cn.mintimate.cn/","name":"Homebrew CN 镜像一键安装","description":"面向国内网络环境的 Homebrew 一键安装脚本，支持 macOS、Linux 与多个镜像源。","inLanguage":"zh-CN","isPartOf":{"@id":"https://brew-cn.mintimate.cn/#website"},"mainEntity":{"@type":"SoftwareApplication","name":"Homebrew CN 安装脚本","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux","downloadUrl":"https://brew-cn.mintimate.cn/install","license":"https://opensource.org/license/mit","isAccessibleForFree":true}}]}</script>
     ${getStyles()}
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
 </head>

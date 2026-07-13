@@ -33,7 +33,7 @@ export function getEnvDetails() {
                     <div class="card-title" style="margin-bottom: 8px;">📚 官方资源</div>
                     <p class="muted" style="margin-bottom: 20px; font-size: 0.85rem;">Homebrew 官方及国内各大高校提供的镜像源使用与配置指南：</p>
                     <div class="resources-vertical-list">
-                        <a href="https://brew.sh/" target="_blank" class="resource-row-link">
+                        <a href="https://brew.sh/" target="_blank" rel="noopener noreferrer" class="resource-row-link">
                             <span class="res-icon">🌐</span>
                             <div class="res-info">
                                 <span class="res-name">Homebrew 官网</span>
@@ -41,7 +41,7 @@ export function getEnvDetails() {
                             </div>
                             <span class="res-arrow">↗</span>
                         </a>
-                        <a href="https://docs.brew.sh/" target="_blank" class="resource-row-link">
+                        <a href="https://docs.brew.sh/" target="_blank" rel="noopener noreferrer" class="resource-row-link">
                             <span class="res-icon">📖</span>
                             <div class="res-info">
                                 <span class="res-name">官方中文文档</span>
@@ -49,7 +49,7 @@ export function getEnvDetails() {
                             </div>
                             <span class="res-arrow">↗</span>
                         </a>
-                        <a href="https://docs.brew.sh/Homebrew-on-Linux" target="_blank" class="resource-row-link">
+                        <a href="https://docs.brew.sh/Homebrew-on-Linux" target="_blank" rel="noopener noreferrer" class="resource-row-link">
                             <span class="res-icon">🐧</span>
                             <div class="res-info">
                                 <span class="res-name">Linux 安装指南</span>
@@ -57,7 +57,7 @@ export function getEnvDetails() {
                             </div>
                             <span class="res-arrow">↗</span>
                         </a>
-                        <a href="https://mirrors.ustc.edu.cn/help/brew.git.html" target="_blank" class="resource-row-link">
+                        <a href="https://mirrors.ustc.edu.cn/help/brew.git.html" target="_blank" rel="noopener noreferrer" class="resource-row-link">
                             <span class="res-icon">⚡</span>
                             <div class="res-info">
                                 <span class="res-name">USTC 镜像帮助</span>
@@ -65,7 +65,7 @@ export function getEnvDetails() {
                             </div>
                             <span class="res-arrow">↗</span>
                         </a>
-                        <a href="https://mirrors.tuna.tsinghua.edu.cn/help/homebrew/" target="_blank" class="resource-row-link">
+                        <a href="https://mirrors.tuna.tsinghua.edu.cn/help/homebrew/" target="_blank" rel="noopener noreferrer" class="resource-row-link">
                             <span class="res-icon">🐟</span>
                             <div class="res-info">
                                 <span class="res-name">清华 TUNA 帮助</span>
@@ -78,6 +78,5 @@ export function getEnvDetails() {
             </div>
         </div>`;
 }
-
 
 
