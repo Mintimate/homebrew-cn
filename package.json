@@ -3,7 +3,8 @@
   "scripts": {
     "sync:agent-skill": "node scripts/sync-homebrew-cn-agent-skill.mjs",
     "build": "bash build.sh",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "node --import tsx --test scripts/*.test.mjs"
   },
   "dependencies": {
     "@edgeone/pages-blob": "latest",

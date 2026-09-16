@@ -20,9 +20,9 @@ export function getAgentEnv(contextEnv: Record<string, string | undefined> | und
   }
 
   return {
-    AI_GATEWAY_API_KEY: source.AI_GATEWAY_API_KEY!,
+    AI_GATEWAY_API_KEY: source.AI_GATEWAY_API_KEY!.trim(),
     AI_GATEWAY_BASE_URL: normalizeOpenAIBaseUrl(source.AI_GATEWAY_BASE_URL!),
-    AI_GATEWAY_MODEL: source.AI_GATEWAY_MODEL,
+    AI_GATEWAY_MODEL: source.AI_GATEWAY_MODEL?.trim() || undefined,
     AI_GATEWAY_ENABLE_THINKING: source.AI_GATEWAY_ENABLE_THINKING,
     AI_GATEWAY_HTTP_REFERER: source.AI_GATEWAY_HTTP_REFERER,
     AI_GATEWAY_TITLE: source.AI_GATEWAY_TITLE,
@@ -47,87 +47,36 @@ export function createGatewayClient(env: AgentEnv) {
   return client;
 }
 
-function wrapOpenAIClient(client: OpenAI, env: AgentEnv) {
-  const originalCreate = client.chat.completions.create.bind(client.chat.completions);
-
-  client.chat.completions.create = async function (params: any, options: any): Promise<any> {
-    params = withVllmThinkingParams(params, env);
-    const response = await originalCreate(params, options);
-
-    if (params.stream) {
-      return {
-        [Symbol.asyncIterator]() {
-          const iterator = (response as any)[Symbol.asyncIterator]();
-          const toolCallNames: Record<number, string> = {};
-          const toolCallSent: Record<number, string> = {};
-
-          return {
-            async next() {
-              const result = await iterator.next();
-              if (result.done) return result;
-
-              const chunk = result.value;
-              const choice = chunk.choices?.[0];
-              const delta = choice?.delta;
-              if (delta) {
-                // vLLM/Qwen3 的思考内容字段是 reasoning_content，SDK 只认 reasoning。
-                // 映射到 reasoning，让 SDK 内部能累积并在 response_done 里输出 reasoning item。
-                if (delta.reasoning_content && !delta.reasoning) {
-                  delta.reasoning = delta.reasoning_content;
-                }
-                if (delta.tool_calls) {
-                  for (const tc of delta.tool_calls) {
-                    const index = tc.index;
-                    if (tc.function?.name) {
-                      if (toolCallNames[index] === undefined) {
-                        toolCallNames[index] = '';
-                        toolCallSent[index] = '';
-                      }
-                      toolCallNames[index] += tc.function.name;
-
-                      const rawName = toolCallNames[index];
-                      const cleanName = cleanRepeatedToolName(rawName);
-                      const sent = toolCallSent[index];
-
-                      const fragment = cleanName.slice(sent.length);
-                      tc.function.name = fragment;
-
-                      toolCallSent[index] = cleanName;
-                    }
-                  }
-                }
-              }
-              return result;
-            }
-          };
-        }
-      };
-    } else {
-      const choice = response.choices?.[0];
-      const message = choice?.message;
-      if (message?.tool_calls) {
-        for (const tc of message.tool_calls) {
-          const tcAny = tc as any;
-          if (tcAny.function?.name) {
-            tcAny.function.name = cleanRepeatedToolName(tcAny.function.name);
-          }
-        }
-      }
-      return response;
-    }
-  } as any;
+// Keep provider-specific fields out of requests to unrelated models.
+export function gatewayThinkingSettings(env: AgentEnv, enabled: boolean): Record<string, unknown> {
+  const model = resolveGatewayModelName(env).toLowerCase();
+  if (model.includes('deepseek')) {
+    return { thinking: { type: enabled ? 'enabled' : 'disabled' } };
+  }
+  if (model.includes('qwen')) {
+    return { chat_template_kwargs: { enable_thinking: enabled } };
+  }
+  return {};
 }
 
-function withVllmThinkingParams(params: any, env: AgentEnv) {
+export function prepareGatewayParams(params: any, env: AgentEnv) {
   if (!params || typeof params !== 'object') return params;
-  const enableThinking = env.AI_GATEWAY_ENABLE_THINKING !== 'false';
   const nextParams = {
+    ...gatewayThinkingSettings(env, env.AI_GATEWAY_ENABLE_THINKING !== 'false'),
     ...params,
-    chat_template_kwargs: {
-      ...(params.chat_template_kwargs ?? {}),
-      enable_thinking: params.chat_template_kwargs?.enable_thinking ?? enableThinking,
-    },
   };
+
+  // Agents SDK serializes reasoning items as `reasoning`. DeepSeek expects
+  // `reasoning_content` on assistant messages when continuing tool calls.
+  if (resolveGatewayModelName(env).toLowerCase().includes('deepseek')) {
+    delete nextParams.chat_template_kwargs;
+    delete nextParams.thinking_token_budget;
+    nextParams.messages = params.messages?.map((message: any) => {
+      if (message.role !== 'assistant' || typeof message.reasoning !== 'string') return message;
+      const { reasoning, ...rest } = message;
+      return { ...rest, reasoning_content: rest.reasoning_content ?? reasoning };
+    });
+  }
 
   if (params.stream) {
     nextParams.stream_options = {
@@ -135,8 +84,59 @@ function withVllmThinkingParams(params: any, env: AgentEnv) {
       include_usage: params.stream_options?.include_usage ?? true,
     };
   }
-
   return nextParams;
+}
+
+function wrapOpenAIClient(client: OpenAI, env: AgentEnv) {
+  const originalCreate = client.chat.completions.create.bind(client.chat.completions);
+  const isQwen = resolveGatewayModelName(env).toLowerCase().includes('qwen');
+
+  client.chat.completions.create = async function (params: any, options: any): Promise<any> {
+    params = prepareGatewayParams(params, env);
+    const response = await originalCreate(params, options);
+
+    if (params.stream) {
+      return {
+        // for-await propagates iterator.return() to the upstream stream on
+        // cancellation; a next()-only adapter leaves the HTTP request running.
+        async *[Symbol.asyncIterator]() {
+          const toolCallNames: Record<number, string> = {};
+          const toolCallSent: Record<number, string> = {};
+          for await (const chunk of response as any) {
+            const delta = chunk.choices?.[0]?.delta;
+            if (delta) {
+              if (delta.reasoning_content && !delta.reasoning) {
+                delta.reasoning = delta.reasoning_content;
+              }
+              if (isQwen && delta.tool_calls) {
+                for (const tc of delta.tool_calls) {
+                  const index = tc.index;
+                  if (tc.function?.name) {
+                    toolCallNames[index] = (toolCallNames[index] ?? '') + tc.function.name;
+                    const cleanName = cleanRepeatedToolName(toolCallNames[index]);
+                    tc.function.name = cleanName.slice((toolCallSent[index] ?? '').length);
+                    toolCallSent[index] = cleanName;
+                  }
+                }
+              }
+            }
+            yield chunk;
+          }
+        },
+      };
+    }
+
+    const message = response.choices?.[0]?.message as any;
+    if (message?.reasoning_content && !message.reasoning) {
+      message.reasoning = message.reasoning_content;
+    }
+    if (isQwen && message?.tool_calls) {
+      for (const tc of message.tool_calls) {
+        if (tc.function?.name) tc.function.name = cleanRepeatedToolName(tc.function.name);
+      }
+    }
+    return response;
+  } as any;
 }
 
 function cleanRepeatedToolName(name: string): string {
@@ -170,7 +170,7 @@ function cleanRepeatedToolName(name: string): string {
 }
 
 export function resolveGatewayModelName(env: AgentEnv): string {
-  return env.AI_GATEWAY_MODEL || DEFAULT_MODEL;
+  return env.AI_GATEWAY_MODEL?.trim() || DEFAULT_MODEL;
 }
 
 function normalizeOpenAIBaseUrl(value: string): string {

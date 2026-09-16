@@ -3,6 +3,7 @@ import {
   createGatewayClient,
   createGatewayModel,
   getAgentEnv,
+  gatewayThinkingSettings,
   resolveGatewayModelName,
   type AgentEnv,
 } from '../_model';
@@ -190,12 +191,7 @@ export async function onRequestPost(context: any) {
           model: createGatewayModel(env),
           modelSettings: {
             parallelToolCalls: true,
-            providerData: {
-              chat_template_kwargs: {
-                enable_thinking: enableThinking,
-              },
-              thinking_token_budget: 512,
-            },
+            providerData: gatewayThinkingSettings(env, enableThinking),
           },
           tools,
         });
@@ -570,6 +566,7 @@ async function classifyIntentWithLLM(
     {
       model: resolveGatewayModelName(env),
       messages,
+      ...gatewayThinkingSettings(env, false),
       response_format: { type: 'json_object' },
       temperature: 0,
       max_tokens: 256,
