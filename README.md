@@ -108,7 +108,7 @@ brew doctor
 
 - **框架声明清晰**：在 `edgeone.json` 中声明 `agents.framework = "openai-agents-sdk"`，并将 `openai`、`@openai/agents` 放入 `externalNodeModules`，让 Makers 按 Agent 项目构建。
 - **业务逻辑和运行时解耦**：`agents/chat/index.ts` 只负责请求入口、SSE 流、会话和工具编排；确定性的网络检测、软件包查询和环境分析放在 `_tools.ts`。
-- **配置不进代码**：模型网关、模型名称、Referer、标题等都通过环境变量注入，部署环境只需要配置 `AI_GATEWAY_*`。
+- **配置不进代码**：模型网关、模型名称等通过 `context.env` 注入，默认使用 Makers Models 的 `@makers/deepseek-v4-flash`；自定义网关可通过 `AI_GATEWAY_*` 覆盖。
 - **优先流式返回**：Agent 使用 SSE 输出渐进式结果，前端可以尽早展示状态、工具调用和最终回答，避免长时间空白等待。
 - **善用 Makers 能力**：多轮对话通过 `makers-conversation-id` 维持 session；需要真实网络探测时使用 Makers sandbox，而不是让模型猜测镜像状态。
 - **文档即行为规范**：`skills/homebrew-cn-agent/` 是 Agent 行为规范的维护入口；构建前用 `npm run sync:agent-skill` 生成 `agents/chat/_skill.ts`，保证部署产物可以稳定读取。
@@ -222,16 +222,40 @@ npm run sync:agent-skill
 
 该命令会生成 `agents/chat/_skill.ts`。不要直接手改 `_skill.ts`；需要调整 Agent 行为时请改 skill 文档。
 
+### Makers Models 配置
+
+以 2026-09-16 的 Makers 官方文档为准，默认模型为 `@makers/deepseek-v4-flash`。
+配置本地 `.env` 和控制台「项目设置 → 环境变量」：
+
+```dotenv
+AI_GATEWAY_API_KEY=<Makers Models API Key>
+AI_GATEWAY_BASE_URL=https://ai-gateway.edgeone.link/v1
+AI_GATEWAY_MODEL=@makers/deepseek-v4-flash
+AI_GATEWAY_ENABLE_THINKING=true
+```
+
+- 在 Makers → Models → API Key 获取密钥；已有密钥只在创建时显示完整内容。
+- 从自定义网关切回 Makers 时，必须同时更换 **API Key、Base URL、model**，不能只修改模型名。不要向 Makers 发送原自定义网关的密钥。
+- 运行时只读取 `context.env`，不在代码或前端保存密钥。本地 `.env` 已被 Git 忽略；请勿覆盖已有配置而遗失原密钥。
+- 主回答按问题复杂度决定是否思考。DeepSeek 使用 `thinking.type`；Qwen 使用 `chat_template_kwargs.enable_thinking`。意图分类固定关闭思考，避免 256 token 的分类输出预算被推理耗尽。
+- DeepSeek 工具调用的 `reasoning_content` 会与 Agents SDK 的 `reasoning` 字段双向转换，保持多轮工具调用兼容。
+- 控制台环境变量的修改在**下一次部署**生效；`.env.example` 不会自动更新线上配置。
+
+官方说明：[Agent 快速开始](https://pages.edgeone.ai/zh/document/agents-quick-start)、[Models 概览](https://pages.edgeone.ai/zh/document/models)。
+
 ### 构建与类型检查
 
 ```bash
 npm run build
 npm run typecheck
+npm test
 ```
 
 `npm run build` 会自动执行 skill 同步，然后生成 Cloud Functions 和静态资源所需文件。
 
 ### EdgeOne Makers 部署
+
+部署前先停止当前项目的 `edgeone makers dev`。开发热更新与生产打包共用 `.edgeone/`，同时运行可能覆盖生产云函数产物（例如混入本地监听端口），导致线上 `INTERNAL_CLOUD_FUNCTION_NOT_READY`。不要通过手改生成文件修复，应停止开发服务后重新构建部署。
 
 ```bash
 edgeone makers deploy -n homebrew-cn -t '<EDGEONE_MAKERS_TOKEN>'
