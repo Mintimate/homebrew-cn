@@ -23,7 +23,7 @@ const logger = createLogger('chat');
 const AGENT_NAME = 'homebrew-cn Agent';
 const AGENT_ROUTE_PATH = '/chat';
 
-export async function onRequest(context: any) {
+export async function onRequestPost(context: any) {
   const body = context.request?.body ?? {};
   const message = typeof body.message === 'string' ? body.message.trim() : '';
   const extraContext = typeof body.context === 'string' ? body.context : undefined;
@@ -70,7 +70,7 @@ export async function onRequest(context: any) {
           'input.length': message.length,
           'input.has_context': Boolean(combinedContext.trim()),
         }, async (span) => {
-          const result = await classifyIntent(message, combinedContext, session, env, signal);
+          const result = await classifyIntent(message, combinedContext, session, env, observability, signal);
           usageTotals.add(result.usage);
           setTraceAttributes(span, {
             'intent.route': result.route,
@@ -123,8 +123,11 @@ export async function onRequest(context: any) {
           yield* withTraceStream(observability, 'direct_mirror_probe_deep', {
             'agent.step': 'mirror_probe_deep',
             'intent.route': intent.route,
+            'openinference.span.kind': 'TOOL',
             'tool.name': 'mirror_probe_deep',
             'tool.sandbox_available': Boolean(context.sandbox),
+            'input.value': '{}',
+            'input.mime_type': 'application/json',
           }, (span) => withUsageFooter(runDirectDiagnostics({ sandbox: context.sandbox, signal, traceSpan: span }), usageTotals));
           return;
         }
@@ -133,6 +136,7 @@ export async function onRequest(context: any) {
           yield* withTraceStream(observability, 'direct_formula_check', {
             'agent.step': 'formula_check',
             'intent.route': intent.route,
+            'openinference.span.kind': 'TOOL',
             'tool.name': 'formula_check',
           }, (span) => withUsageFooter(runDirectFormulaCheck({ message, extraContext: combinedContext, signal, traceSpan: span }), usageTotals));
           return;
@@ -156,6 +160,7 @@ export async function onRequest(context: any) {
           yield* withTraceStream(observability, 'direct_analysis_fix', {
             'agent.step': 'analysis_fix',
             'intent.route': intent.route,
+            'openinference.span.kind': 'TOOL',
             'tool.name': 'analyze',
           }, (span) => withUsageFooter(runDirectAnalysisAndFix({ message, extraContext: combinedContext, signal, traceSpan: span }), usageTotals));
           return;
@@ -407,6 +412,28 @@ function usageAttributes(usage: any): TraceAttributes {
   };
 }
 
+function llmTraceUsageAttributes(usage: UsagePayload | null): TraceAttributes {
+  if (!usage) return {};
+
+  const attributes: TraceAttributes = {
+    'llm.token_count.prompt': usage.input_tokens ?? 0,
+    'llm.token_count.completion': usage.output_tokens ?? 0,
+    'llm.token_count.total': usage.total_tokens ?? 0,
+    'gen_ai.usage.input_tokens': usage.input_tokens ?? 0,
+    'gen_ai.usage.output_tokens': usage.output_tokens ?? 0,
+    'gen_ai.usage.total_tokens': usage.total_tokens ?? 0,
+  };
+
+  if (typeof usage.reasoning_tokens === 'number') {
+    attributes['llm.token_count.completion_details.reasoning'] = usage.reasoning_tokens;
+  }
+  if (typeof usage.cached_tokens === 'number') {
+    attributes['llm.token_count.prompt_details.cache_read'] = usage.cached_tokens;
+  }
+
+  return attributes;
+}
+
 function createUsageAccumulator() {
   const totals: UsagePayload = {
     input_tokens: 0,
@@ -485,10 +512,19 @@ async function classifyIntent(
   extraContext: string | undefined,
   session: Session | undefined,
   env: AgentEnv,
+  observability: ObservabilityContext,
   signal?: AbortSignal,
 ): Promise<IntentClassification> {
   try {
-    return await classifyIntentWithLLM(message, extraContext, session, env, signal);
+    // The runtime auto-instruments @openai/agents, but this classifier calls the
+    // OpenAI-compatible client directly, so it needs an explicit LLM span.
+    return await withTrace(observability, 'intent_classifier_llm', {
+      'agent.step': 'intent_llm',
+      'openinference.span.kind': 'LLM',
+      'llm.model_name': resolveGatewayModelName(env),
+      'llm.provider': 'openai-compatible',
+      'llm.system': 'openai',
+    }, (span) => classifyIntentWithLLM(message, extraContext, session, env, span, signal));
   } catch (error) {
     logger.error('Intent classification failed, falling back to general_homebrew:', error);
     return {
@@ -509,6 +545,7 @@ async function classifyIntentWithLLM(
   extraContext: string | undefined,
   session: Session | undefined,
   env: AgentEnv,
+  traceSpan?: TraceSpan,
   signal?: AbortSignal,
 ): Promise<IntentClassification> {
   const client = createGatewayClient(env);
@@ -518,14 +555,21 @@ async function classifyIntentWithLLM(
     ? `${message}\n\nUser-provided environment context:\n${extraContext.trim()}`
     : message;
 
+  const messages = [
+    { role: 'system', content: CLASSIFICATION_PROMPT },
+    ...historyMessages,
+    { role: 'user', content: userContent },
+  ];
+
+  setTraceAttributes(traceSpan, {
+    'input.value': truncateText(JSON.stringify(messages), 20_000),
+    'input.mime_type': 'application/json',
+  });
+
   const response = await client.chat.completions.create(
     {
       model: resolveGatewayModelName(env),
-      messages: [
-        { role: 'system', content: CLASSIFICATION_PROMPT },
-        ...historyMessages,
-        { role: 'user', content: userContent },
-      ],
+      messages,
       response_format: { type: 'json_object' },
       temperature: 0,
       max_tokens: 256,
@@ -534,6 +578,12 @@ async function classifyIntentWithLLM(
   );
 
   const raw = (response as any).choices?.[0]?.message?.content ?? '';
+  const usage = extractUsage(response);
+  setTraceAttributes(traceSpan, {
+    'output.value': truncateText(raw, 4_000),
+    'output.mime_type': 'application/json',
+    ...llmTraceUsageAttributes(usage),
+  });
   const parsed = safeParseJson(raw);
 
   const rawRoute = parsed?.route;
@@ -552,7 +602,7 @@ async function classifyIntentWithLLM(
     needs_sandbox: needsSandbox,
     route,
     reason: typeof parsed?.reason === 'string' ? parsed.reason : '由 LLM 根据上下文判断。',
-    usage: extractUsage(response),
+    usage,
   };
 }
 
@@ -704,6 +754,8 @@ async function* runDirectDiagnostics(options: { sandbox?: any; signal?: AbortSig
       'tool.result.duration_ms': finalResult.duration_ms,
       'tool.result.report_count': finalResult.report.length,
       'tool.result.failed_count': finalResult.report.filter((item) => item.error).length,
+      'output.value': truncateText(JSON.stringify(finalResult), 20_000),
+      'output.mime_type': 'application/json',
     });
     yield sseEvent({
       type: 'tool_result',
@@ -765,6 +817,10 @@ function* runDirectAnalysisAndFix(options: {
   traceSpan?: TraceSpan;
 }) {
   const sourceText = buildAnalysisInput(options.message, options.extraContext);
+  setTraceAttributes(options.traceSpan, {
+    'input.value': truncateText(sourceText, 20_000),
+    'input.mime_type': 'text/plain',
+  });
   yield sseEvent({ type: 'tool_call', name: 'analyze', arguments: JSON.stringify({ text: summarizeToolInput(sourceText) }) });
 
   if (options.signal?.aborted) return;
@@ -795,6 +851,11 @@ function* runDirectAnalysisAndFix(options: {
       content: fixScript,
     });
   }
+
+  setTraceAttributes(options.traceSpan, {
+    'output.value': truncateText(JSON.stringify({ analysis, fix_generated: Boolean(fixScript) }), 20_000),
+    'output.mime_type': 'application/json',
+  });
 
   yield sseEvent({
     type: 'ai_response',
@@ -842,7 +903,11 @@ async function* runDirectFormulaCheck(options: {
   traceSpan?: TraceSpan;
 }) {
   const query = extractFormulaQuery(options.message, options.extraContext);
-  setTraceAttributes(options.traceSpan, { 'tool.query': query });
+  setTraceAttributes(options.traceSpan, {
+    'tool.query': query,
+    'input.value': JSON.stringify({ query }),
+    'input.mime_type': 'application/json',
+  });
   yield sseEvent({
     type: 'thinking',
     content: `步骤 1：识别为 Homebrew 软件包安装查询；步骤 2：准备查询 Homebrew JSON 索引；步骤 3：根据索引结果给出安装命令或未收录提示。查询对象：${query}`,
@@ -875,6 +940,8 @@ async function* runDirectFormulaCheck(options: {
     'tool.result.source': result.source,
     'tool.result.exact_match': Boolean(result.exact),
     'tool.result.candidate_count': result.candidates.length,
+    'output.value': truncateText(JSON.stringify(result), 20_000),
+    'output.mime_type': 'application/json',
   });
 
   yield sseEvent({
