@@ -765,8 +765,8 @@ async function* runDirectDiagnostics(options: { sandbox?: any; signal?: AbortSig
 
 function summarizeDiagnostics(result: Awaited<ReturnType<typeof diagnoseHomebrewMirrors>>) {
   const usable = result.report
-    .filter((item) => !item.error && item.http_status >= 200 && item.http_status < 400)
-    .sort((a, b) => a.latency_ms - b.latency_ms);
+    .filter((item) => !item.error && item.commit_hash && (item.git_ok || (item.http_status >= 200 && item.http_status < 400)))
+    .sort((a, b) => Number(b.sync_status === 'synced') - Number(a.sync_status === 'synced') || a.latency_ms - b.latency_ms);
   const best = usable.find((item) => item.name !== 'Official (官方源)') ?? usable[0];
   const official = result.report.find((item) => item.name === 'Official (官方源)');
 
@@ -776,9 +776,9 @@ function summarizeDiagnostics(result: Awaited<ReturnType<typeof diagnoseHomebrew
   ];
 
   if (best) {
-    lines.push(`当前建议优先选择 **${best.name}**，延迟约 **${best.latency_ms} ms**，同步状态为 **${formatSyncStatus(best.sync_status)}**。`);
+    lines.push(`当前可读取的镜像候选是 **${best.name}**，延迟约 **${best.latency_ms} ms**，分支 **${best.commit_ref?.replace('refs/heads/', '') || '未知'}**，状态为 **${formatSyncStatus(best.sync_status)}**。`);
     const installChoice = mirrorInstallChoice(best.name);
-    if (installChoice) {
+    if (installChoice && best.sync_status === 'synced') {
       lines.push('');
       lines.push(`安装或切换镜像时建议选择 **${installChoice.label}**。运行脚本后在镜像源选择处输入 **${installChoice.choice}**：`);
       lines.push('');
@@ -790,8 +790,11 @@ function summarizeDiagnostics(result: Awaited<ReturnType<typeof diagnoseHomebrew
     lines.push('本次没有检测到可直接访问的镜像源，建议检查本地网络、代理或稍后重试。');
   }
 
-  if (official?.sync_status === 'network_restricted') {
-    lines.push('官方源检测失败通常是 EdgeOne 沙箱无法访问 GitHub 导致，不代表 Homebrew 官方源本身不可用。');
+  if (!official?.commit_hash || official.error) {
+    lines.push('本次未取得官方分支基准，不能确认镜像同步正常；检测节点受限不等同于官方源故障。');
+  }
+  if (best && best.sync_status !== 'synced') {
+    lines.push('该候选仅确认可读取，建议先核对同步状态再切换；哈希不同也不能仅凭本次检测判断谁领先或落后。');
   }
 
   lines.push('');
@@ -1091,9 +1094,10 @@ function formatSyncStatus(status: string) {
   const labels: Record<string, string> = {
     upstream: '官方源',
     synced: '同步正常',
-    lagging: '延迟同步',
+    different: '与上游不同',
+    unverified: '同步未验证',
     failed: '异常',
-    network_restricted: '沙箱网络受限',
+    network_restricted: '检测节点受限',
   };
   return labels[status] || status;
 }

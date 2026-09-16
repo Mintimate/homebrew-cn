@@ -31,8 +31,9 @@ interface MirrorDiagnosticResult {
   ssl_ok: boolean;
   http_status: number;
   commit_hash: string | null;
+  commit_ref?: string | null;
   error: string | null;
-  sync_status: 'upstream' | 'synced' | 'lagging' | 'failed' | 'network_restricted';
+  sync_status: 'upstream' | 'synced' | 'different' | 'unverified' | 'failed' | 'network_restricted';
   method?: 'edge_fetch' | 'sandbox' | 'sandbox_deep';
   dns_ms?: number | null;
   tcp_ms?: number | null;
@@ -140,9 +141,11 @@ export async function probeHomebrewMirrorsDeep(options: DiagnoseOptions): Promis
 
   const checks = Object.entries(targets).map(async ([name, url]) => {
     const result = options.sandbox
-      ? await withTimeout(checkTargetWithDeepSandbox(name, url, options.sandbox), 6500)
+      ? await withTimeout(checkTargetWithDeepSandbox(name, url, options.sandbox), 13000)
       : null;
-    const finalResult = result ?? await checkMirror(name, url, options);
+    const finalResult = result?.commit_hash && !result.error
+      ? result
+      : preferProbeResult(result, await checkMirror(name, url, options));
     report.push(finalResult);
     updateSyncStatus(report);
     await options.onProgress?.(finalResult, [...report]);
@@ -180,25 +183,32 @@ function getMirrorNetworkNote(name: string, url?: string) {
 }
 
 function updateSyncStatus(report: MirrorDiagnosticResult[]) {
-  const officialReport = report.find((r) => r.name === 'Official (官方源)');
-  const officialHash = officialReport?.commit_hash || null;
+  const official = report.find((r) => r.name === 'Official (官方源)');
+  const officialHash = !official?.error ? official?.commit_hash : null;
 
   for (const r of report) {
-    if (r.name === 'Official (官方源)') {
-      if (r.error && !r.commit_hash) {
+    const notes = [getMirrorNetworkNote(r.name)];
+    if (!r.commit_hash || r.error) {
+      if (r.http_status >= 200 && r.http_status < 300) {
+        r.sync_status = 'unverified';
+        notes.push('HTTP 已连通，但未取得完整分支引用，无法判断同步状态；不等同于镜像故障。');
+      } else if (r.name === 'Official (官方源)') {
         r.sync_status = 'network_restricted';
-        r.network_note = 'EdgeOne 沙箱当前无法访问 GitHub 官方源；这只代表检测环境受限，不等同于官方源故障。';
+        notes.push('当前检测节点未能取得 GitHub 官方基准；不代表官方源发生故障。');
       } else {
-        r.sync_status = 'upstream';
-        r.network_note = null;
+        r.sync_status = 'failed';
+        notes.push('本次检测未成功，请结合下方错误及本地网络复测；不能据此确认镜像全局故障。');
       }
-    } else if (!r.commit_hash) {
-      r.sync_status = 'failed';
-    } else if (officialHash) {
-      r.sync_status = r.commit_hash === officialHash ? 'synced' : 'lagging';
+    } else if (r.name === 'Official (官方源)') {
+      r.sync_status = 'upstream';
+    } else if (!officialHash || !official?.commit_ref || r.commit_ref !== official.commit_ref) {
+      r.sync_status = 'unverified';
+      notes.push(!officialHash ? '未取得官方分支基准，仅确认该镜像可读取，不能确认同步正常。' : '与官方取得的分支不同，不能跨分支比较同步状态。');
     } else {
-      r.sync_status = 'synced';
+      // A different hash alone does not establish which commit is ahead.
+      r.sync_status = r.commit_hash === officialHash ? 'synced' : 'different';
     }
+    r.network_note = notes.filter(Boolean).join(' ') || null;
   }
 }
 
@@ -213,7 +223,16 @@ async function checkMirror(name: string, url: string, options: DiagnoseOptions):
   }
 
   const sandboxResult = await checkTargetWithSandbox(name, url, options.sandbox);
-  return sandboxResult ?? edgeResult;
+  return preferProbeResult(edgeResult, sandboxResult);
+}
+
+function preferProbeResult(first: MirrorDiagnosticResult | null, second: MirrorDiagnosticResult | null): MirrorDiagnosticResult {
+  const score = (r: MirrorDiagnosticResult | null) => !r ? -1
+    : (r.commit_hash && !r.error ? 100 : 0)
+      + (r.http_status >= 200 && r.http_status < 300 ? 20 : 0)
+      + (r.http_status > 0 ? 10 : 0);
+  // A failed retry must not erase HTTP 200 or a valid ref observed earlier.
+  return (score(second) > score(first) ? second : first)!;
 }
 
 function createFailedResult(name: string, error: string): MirrorDiagnosticResult {
@@ -248,7 +267,7 @@ async function checkTargetWithFetch(
   };
 
   const controller = new AbortController();
-  const timeout = setTimeout(() => controller.abort(), 3000);
+  const timeout = setTimeout(() => controller.abort(), 8000);
   const abortListener = () => controller.abort();
   signal?.addEventListener('abort', abortListener, { once: true });
 
@@ -261,12 +280,20 @@ async function checkTargetWithFetch(
     result.ssl_ok = true;
     result.http_status = response.status;
 
-    const content = await response.text();
-    result.commit_hash = extractGitRef(content);
+    if (!response.ok) {
+      await response.body?.cancel();
+      result.error = `Git refs endpoint returned HTTP ${response.status}`;
+      return result;
+    }
+    const ref = await readGitRef(response);
+    result.commit_hash = ref?.hash ?? null;
+    result.commit_ref = ref?.ref ?? null;
+    result.latency_ms = Date.now() - start;
+    if (!ref) result.error = 'Git refs response did not contain a supported branch (main/stable/master)';
   } catch (error) {
     const err = error as Error;
-    result.error = err.name === 'AbortError' ? 'Timeout after 3s' : err.message;
-    result.ssl_ok = !/certificate|ssl/i.test(result.error);
+    result.error = signal?.aborted ? 'Request aborted' : controller.signal.aborted ? 'Git refs read timed out after 8s' : err.message;
+    if (/certificate|ssl/i.test(result.error)) result.ssl_ok = false;
   } finally {
     clearTimeout(timeout);
     signal?.removeEventListener('abort', abortListener);
@@ -285,7 +312,7 @@ async function checkTargetWithSandbox(
       const cmd = [
         'python3',
         '-c',
-        JSON.stringify(buildMirrorProbePython(name, url)),
+        quoteShellArg(buildMirrorProbePython(name, url)),
       ].join(' ');
       const res = await sandbox.commands.run(cmd, { timeout: 5 });
       const text = res.stdout || res.stderr || '';
@@ -312,7 +339,7 @@ async function checkTargetWithDeepSandbox(
 ): Promise<MirrorDiagnosticResult | null> {
   try {
     if (sandbox.commands?.run) {
-      const cmd = ['python3', '-c', JSON.stringify(buildMirrorDeepProbePython(name, url))].join(' ');
+      const cmd = ['python3', '-c', quoteShellArg(buildMirrorDeepProbePython(name, url))].join(' ');
       const res = await sandbox.commands.run(cmd, { timeout: 12 });
       const parsed = parseProbeResult(res.stdout || res.stderr || '');
       return parsed ? { ...parsed, method: 'sandbox_deep' } : null;
@@ -330,9 +357,38 @@ async function checkTargetWithDeepSandbox(
   return null;
 }
 
+function quoteShellArg(value: string): string {
+  return "'" + value.replace(/'/g, "'\\''") + "'";
+}
+
+function gitRefReaderPython() {
+  return `
+def extract_ref(text):
+  for branch in ("main", "stable", "master"):
+    ref = "refs/heads/" + branch
+    match = re.search(r"([0-9a-f]{40})\\s+" + ref + r"(?:[\\s\\x00])", text or "")
+    if match:
+      return match.group(1), ref
+  return None, None
+
+def read_ref(response):
+  content = b""
+  while len(content) < 1024 * 1024:
+    chunk = response.read1(4096)
+    if not chunk:
+      return extract_ref(content.decode("utf-8", errors="ignore") + "\\n")
+    content += chunk
+    found = extract_ref(content.decode("utf-8", errors="ignore"))
+    if found[1] == "refs/heads/main":
+      return found
+  raise ValueError("Git refs response exceeded 1 MiB probe limit before main was found")
+`;
+}
+
 function buildMirrorProbePython(name: string, url: string) {
   return `
 import json, re, ssl, time, urllib.request
+${gitRefReaderPython()}
 name = ${JSON.stringify(name)}
 url = ${JSON.stringify(url)}
 refs_url = ${JSON.stringify(getGitRefsEndpoint(name, url))}
@@ -342,25 +398,24 @@ result = {
   "ssl_ok": False,
   "http_status": 0,
   "commit_hash": None,
+  "commit_ref": None,
   "error": None,
   "sync_status": "failed",
-  "network_note": ${JSON.stringify(getMirrorNetworkNote(name, url))}
+  "network_note": ${getMirrorNetworkNote(name, url) ? JSON.stringify(getMirrorNetworkNote(name, url)) : 'None'}
 }
 start = time.time()
 try:
   ctx = ssl.create_default_context()
   req = urllib.request.Request(refs_url, headers={"User-Agent": "git/2.0.0"})
   with urllib.request.urlopen(req, timeout=4, context=ctx) as response:
-    content = response.read().decode("utf-8", errors="ignore")
-    result["latency_ms"] = int((time.time() - start) * 1000)
     result["ssl_ok"] = True
     result["http_status"] = response.status
-    match = re.search(r"([0-9a-f]{40})\\\\s+refs/heads/(stable|master)", content)
-    if match:
-      result["commit_hash"] = match.group(1)
+    result["latency_ms"] = int((time.time() - start) * 1000)
+    result["commit_hash"], result["commit_ref"] = read_ref(response)
 except Exception as e:
   result["error"] = str(e)
-  result["ssl_ok"] = not bool(re.search(r"certificate|ssl", result["error"], re.I))
+  if re.search(r"certificate|ssl", result["error"], re.I):
+    result["ssl_ok"] = False
 print(json.dumps(result, ensure_ascii=False))
 `.trim();
 }
@@ -368,6 +423,7 @@ print(json.dumps(result, ensure_ascii=False))
 function buildMirrorDeepProbePython(name: string, url: string) {
   return `
 import json, re, socket, ssl, subprocess, time, urllib.parse, urllib.request
+${gitRefReaderPython()}
 
 name = ${JSON.stringify(name)}
 url = ${JSON.stringify(url)}
@@ -382,6 +438,7 @@ result = {
   "ssl_ok": False,
   "http_status": 0,
   "commit_hash": None,
+  "commit_ref": None,
   "error": None,
   "sync_status": "failed",
   "method": "sandbox_deep",
@@ -392,15 +449,11 @@ result = {
   "git_ok": False,
   "git_error": None,
   "ip": None,
-  "network_note": ${JSON.stringify(getMirrorNetworkNote(name, url))},
+  "network_note": ${getMirrorNetworkNote(name, url) ? JSON.stringify(getMirrorNetworkNote(name, url)) : 'None'},
 }
 
 def elapsed_ms(start):
   return int((time.time() - start) * 1000)
-
-def extract_ref(text):
-  m = re.search(r"([0-9a-f]{40})\\\\s+refs/heads/(stable|master)", text or "")
-  return m.group(1) if m else None
 
 started = time.time()
 try:
@@ -426,19 +479,19 @@ try:
   t = time.time()
   req = urllib.request.Request(refs_url, headers={"User-Agent": "git/2.0.0"})
   with urllib.request.urlopen(req, timeout=6) as response:
-    body = response.read().decode("utf-8", errors="ignore")
-    result["latency_ms"] = elapsed_ms(t)
     result["http_status"] = response.status
-    result["commit_hash"] = extract_ref(body)
+    result["latency_ms"] = elapsed_ms(t)
+    result["commit_hash"], result["commit_ref"] = read_ref(response)
 
 except Exception as e:
   result["error"] = str(e)
-  result["ssl_ok"] = result["ssl_ok"] or not bool(re.search(r"certificate|ssl", result["error"], re.I))
+  if re.search(r"certificate|ssl", result["error"], re.I):
+    result["ssl_ok"] = False
 
 try:
   t = time.time()
   proc = subprocess.run(
-    ["git", "ls-remote", "--heads", url],
+    ["git", "ls-remote", "--heads", url, "main", "stable", "master"],
     stdout=subprocess.PIPE,
     stderr=subprocess.PIPE,
     text=True,
@@ -447,7 +500,10 @@ try:
   result["git_ms"] = elapsed_ms(t)
   result["git_ok"] = proc.returncode == 0
   if proc.returncode == 0:
-    result["commit_hash"] = result["commit_hash"] or extract_ref(proc.stdout)
+    git_hash, git_ref = extract_ref(proc.stdout + "\\n")
+    if git_hash and (git_ref == "refs/heads/main" or not result["commit_hash"]):
+      result["commit_hash"], result["commit_ref"] = git_hash, git_ref
+      result["error"] = None
   else:
     result["git_error"] = (proc.stderr or proc.stdout or "").strip()[:240]
 except Exception as e:
@@ -476,6 +532,7 @@ function parseProbeResult(value: unknown): MirrorDiagnosticResult | null {
       ssl_ok: !!parsed.ssl_ok,
       http_status: typeof parsed.http_status === 'number' ? parsed.http_status : 0,
       commit_hash: parsed.commit_hash || null,
+      commit_ref: parsed.commit_ref || null,
       error: parsed.error || null,
       sync_status: 'failed',
       network_note: parsed.network_note || null,
@@ -492,10 +549,39 @@ function parseProbeResult(value: unknown): MirrorDiagnosticResult | null {
   }
 }
 
-function extractGitRef(content: string): string | null {
-  return content.match(/([0-9a-f]{40})\s+refs\/heads\/stable/)?.[1]
-    ?? content.match(/([0-9a-f]{40})\s+refs\/heads\/master/)?.[1]
-    ?? null;
+interface GitRef { hash: string; ref: string }
+
+function extractGitRef(content: string): GitRef | null {
+  // Homebrew's current upstream advertises main as HEAD. master can remain
+  // present but frozen, so it must not be preferred over main.
+  for (const branch of ['main', 'stable', 'master']) {
+    const ref = `refs/heads/${branch}`;
+    const match = content.match(new RegExp(`([0-9a-f]{40})\\s+${ref}(?:[\\s\\x00])`));
+    if (match) return { hash: match[1], ref };
+  }
+  return null;
+}
+
+async function readGitRef(response: Response): Promise<GitRef | null> {
+  if (!response.body) return null;
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let content = '';
+  let bytes = 0;
+  try {
+    while (bytes < 1024 * 1024) {
+      const { done, value } = await reader.read();
+      if (done) return extractGitRef(content + decoder.decode() + '\n');
+      bytes += value.byteLength;
+      content += decoder.decode(value, { stream: true });
+      const ref = extractGitRef(content);
+      if (ref?.ref === 'refs/heads/main') return ref;
+    }
+    // Do not claim a legacy branch is current when the response was truncated.
+    throw new Error('Git refs response exceeded the 1 MiB probe limit before main was found');
+  } finally {
+    await reader.cancel().catch(() => {});
+  }
 }
 
 export function analyzeHomebrewText(text: string): AnalyzeResult {
