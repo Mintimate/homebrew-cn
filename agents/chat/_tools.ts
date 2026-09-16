@@ -266,6 +266,12 @@ async function checkTargetWithFetch(
     network_note: getMirrorNetworkNote(name, url),
   };
 
+  const ssrfError = getSsrfValidationError(url);
+  if (ssrfError) {
+    result.error = ssrfError;
+    return result;
+  }
+
   const controller = new AbortController();
   const timeout = setTimeout(() => controller.abort(), 8000);
   const abortListener = () => controller.abort();
