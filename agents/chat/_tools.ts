@@ -1,5 +1,6 @@
 import { tool } from '@openai/agents';
 import { z } from 'zod';
+import { HOMEBREW_CN_CONFIGURE_COMMAND, HOMEBREW_CN_LINUX_CONFIGURE_COMMAND, HOMEBREW_CN_DIAGNOSTIC_RULES, HOMEBREW_CN_DOCTOR_SUMMARIES } from './_skill';
 
 type ToolEnv = Record<string, string | undefined>;
 
@@ -51,6 +52,12 @@ interface AnalyzeIssue {
   title: string;
   message: string;
   suggestion: string;
+  evidence?: string[];
+  verification?: string;
+  commands?: string[];
+  impact_scope?: string;
+  installation_impact?: string;
+  action_required?: string;
 }
 
 export interface AnalyzeResult {
@@ -58,6 +65,25 @@ export interface AnalyzeResult {
   analyzed_lines: number;
   issues_found: number;
   issues: AnalyzeIssue[];
+  scope?: 'provided_text';
+  doctor?: { warning_count: number; unrecognized_count: number; ready: boolean; assessment: { installation_impact: string; action_required: string } };
+  configuration?: ConfigurationComparison;
+}
+
+interface ConfigurationRow {
+  key: string;
+  label: string;
+  terminal: string | null;
+  desktop: string | null;
+  status: 'same' | 'different' | 'incomplete';
+  candidate_sources: string[];
+}
+
+interface ConfigurationComparison {
+  terminal_provided: boolean;
+  desktop_provided: boolean;
+  rows: ConfigurationRow[];
+  sources: Array<{ source: string; values: Record<string, string[]> }>;
 }
 
 export interface FixOptions {
@@ -584,7 +610,241 @@ async function readGitRef(response: Response): Promise<GitRef | null> {
   }
 }
 
-export function analyzeHomebrewText(text: string): AnalyzeResult {
+const MIRROR_KEYS = [
+  'HOMEBREW_BREW_GIT_REMOTE', 'HOMEBREW_CORE_GIT_REMOTE', 'HOMEBREW_CASK_GIT_REMOTE',
+  'HOMEBREW_BOTTLE_DOMAIN', 'HOMEBREW_API_DOMAIN', 'HOMEBREW_ARTIFACT_DOMAIN',
+  'HOMEBREW_ARTIFACT_DOMAIN_NO_FALLBACK',
+] as const;
+const REPORT_KEYS = new Set<string>(['HOMEBREW_PREFIX', 'ORIGIN', ...MIRROR_KEYS]);
+const CONFIG_LABELS: Record<string, string> = {
+  HOMEBREW_PREFIX: 'Homebrew 安装位置',
+  ORIGIN: 'Homebrew 当前更新地址',
+  HOMEBREW_BREW_GIT_REMOTE: '指定的 Homebrew 更新地址',
+  HOMEBREW_CORE_GIT_REMOTE: '工具说明仓库地址',
+  HOMEBREW_CASK_GIT_REMOTE: '应用说明仓库地址',
+  HOMEBREW_BOTTLE_DOMAIN: '工具安装包下载地址',
+  HOMEBREW_API_DOMAIN: '软件目录下载地址',
+  HOMEBREW_ARTIFACT_DOMAIN: '其他下载的代理地址',
+  HOMEBREW_ARTIFACT_DOMAIN_NO_FALLBACK: '代理失败后是否停止下载',
+};
+const CONFIG_KEYS = new Set<string>([...REPORT_KEYS, 'HOMEBREW_SYSTEM_ENV_TAKES_PRIORITY', 'HOMEBREW_XDG_CONFIG_HOME', 'XDG_CONFIG_HOME']);
+type DiagnosticRuleId = keyof typeof HOMEBREW_CN_DIAGNOSTIC_RULES;
+
+const DOCTOR_HEADINGS: Array<[RegExp, DiagnosticRuleId]> = [
+  [/^The current git origin is:/i, 'doctor_origin'],
+  [/^Some installed casks are deprecated or disabled\./i, 'doctor_deprecated_casks'],
+  [/^Some installed kegs have no formulae!/i, 'doctor_orphaned_kegs'],
+  [/^Some installed formulae are deprecated or disabled\./i, 'doctor_deprecated_formulae'],
+  [/^Unbrewed dylibs were found in /i, 'doctor_unbrewed_dylibs'],
+  [/^The following taps are not trusted:/i, 'doctor_untrusted_taps'],
+];
+
+export function redactDiagnosticText(text: string): string {
+  return text
+    .replace(/\x1b\[[0-9;]*[A-Za-z]/g, '')
+    .replace(/(?:https?|socks5h?|socks4a?|ftp|ssh):\/\/[^\s<>"'`]+/gi, raw => {
+      try {
+        const url = new URL(raw);
+        const credentials = url.username || url.password ? '[redacted]@' : '';
+        return `${url.protocol}//${credentials}${url.host}${url.pathname}${url.search ? '?[redacted]' : ''}${url.hash ? '#[redacted]' : ''}`;
+      } catch { return '[redacted-url]'; }
+    })
+    .replace(/\b([A-Z_]*(?:TOKEN|PASSWORD|SECRET|API_KEY|AUTHORIZATION)[A-Z_]*\s*[:=]\s*)[^\r\n]+/gi, '$1[redacted]')
+    .replace(/\/Users\/[^/\s]+/g, '~')
+    .replace(/\/home\/(?!linuxbrew(?:\/|\b))[^/\s]+/g, '~');
+}
+
+function diagnosticIssue(id: DiagnosticRuleId, evidence: string[] = [], commands: string[] = []): AnalyzeIssue {
+  const rule = HOMEBREW_CN_DIAGNOSTIC_RULES[id];
+  return {
+    id, severity: rule.severity, title: rule.title, message: rule.message,
+    suggestion: rule.suggestion, verification: rule.verification,
+    evidence: evidence.slice(0, 30),
+    commands: [...('commands' in rule ? rule.commands : []), ...commands].slice(0, 12),
+    ...('impact_scope' in rule ? { impact_scope: rule.impact_scope, installation_impact: rule.installation_impact, action_required: rule.action_required } : {}),
+  };
+}
+
+function doctorBlocks(text: string) {
+  const clean = text.replace(/\*\*/g, '');
+  const matches = [...clean.matchAll(/^\s*(Warning|Error):\s*([^\n]+)([\s\S]*?)(?=^\s*(?:Warning|Error):|$(?![\s\S]))/gm)];
+  return matches.map(match => ({ level: match[1], heading: match[2].trim(), body: match[3] }));
+}
+
+function configSection(line: string): string | null {
+  const heading = line.match(/^\s*(?:#{1,6}\s+(.+)|\[([^\]]+)\]|(终端|桌面端|BrewUI|Terminal|Shell)(?:\s+(?:brew config|Configuration))?[:：])\s*$/i);
+  if (!heading) return null;
+  return (heading[1] ?? heading[2] ?? heading[3]).trim().replace(/[:：]$/, '');
+}
+
+function sectionKind(label: string): 'terminal' | 'desktop' | 'file' | 'shell' | 'unknown' {
+  if (/brew\.env$/.test(label)) return 'file';
+  if (/^(?:terminal|终端)(?:\s+brew config)?$/i.test(label)) return 'terminal';
+  if (/^(?:desktop|桌面端|BrewUI)(?:\s+(?:configuration|配置|brew config))?$/i.test(label)) return 'desktop';
+  if (/^(?:shell|\.zshrc|\.bashrc|\.zprofile|\.bash_profile)$/i.test(label)) return 'shell';
+  return 'unknown';
+}
+
+export function hasHomebrewDiagnosticReport(text: string): boolean {
+  const clean = text.replace(/\x1b\[[0-9;]*[A-Za-z]/g, '').replace(/\*\*/g, '');
+  if (/^\s*Your system is ready to brew\.\s*$/m.test(clean)) return true;
+  const blocks = doctorBlocks(clean);
+  if (blocks.some(block => DOCTOR_HEADINGS.some(([pattern]) => pattern.test(block.heading)))) return true;
+  if (blocks.length && /\b(?:Homebrew|BrewUI|brew doctor)\b|Doctor|诊断报告/i.test(clean)) return true;
+  const lines = clean.split(/\r?\n/);
+  const hasSections = lines.some(line => {
+    const label = configSection(line);
+    return label !== null && sectionKind(label) !== 'unknown';
+  });
+  return (hasSections && /^\s*(?:export\s+)?(?:HOMEBREW_[A-Z_]+|ORIGIN)\s*[:=]/m.test(clean))
+    || /^HOMEBREW_PREFIX\s*[:=]/m.test(clean);
+}
+
+function analyzeDoctor(text: string): { issues: AnalyzeIssue[]; doctor: NonNullable<AnalyzeResult['doctor']> } | null {
+  const blocks = doctorBlocks(text);
+  const ready = /^\s*Your system is ready to brew\.\s*$/m.test(text);
+  if (!ready && !(blocks.length && (/\b(?:Homebrew|BrewUI|brew doctor)\b|Doctor|诊断报告/i.test(text)
+    || blocks.some(block => DOCTOR_HEADINGS.some(([pattern]) => pattern.test(block.heading)))))) return null;
+  let unrecognized = 0;
+  const issues = blocks.map(block => {
+    const id = DOCTOR_HEADINGS.find(([pattern]) => pattern.test(block.heading))?.[1] ?? 'doctor_unknown';
+    if (id === 'doctor_unknown') unrecognized++;
+    // Only parse indented identities. Never reuse Doctor's suggested shell commands.
+    const items = block.body.split('\n').filter(line => /^\s{2,}\S/.test(line)).map(line => line.trim())
+      .filter(line => /^[a-z0-9][a-z0-9@+_.-]*(?:\/[a-z0-9][a-z0-9@+_.-]*){0,2}$/.test(line));
+    const localItems = [...new Set(items)].filter(item => !item.includes('/')).slice(0, 6);
+    const commands = id === 'doctor_deprecated_casks'
+      ? localItems.map(item => `brew info --cask ${quoteShellArg(item)}`)
+      : id === 'doctor_deprecated_formulae' || id === 'doctor_orphaned_kegs'
+        ? localItems.flatMap(item => [`brew list --versions ${quoteShellArg(item)}`, `brew uses --installed ${quoteShellArg(item)}`])
+        : [];
+    if (id === 'doctor_deprecated_formulae') commands.unshift(...localItems.map(item => `brew info --formula ${quoteShellArg(item)}`));
+    const paths = id === 'doctor_unbrewed_dylibs'
+      ? block.body.split('\n').map(line => line.trim()).filter(line => /^\/[^\r\n]+\.dylib$/.test(line)) : [];
+    const origin = id === 'doctor_origin' ? block.body.match(/https?:\/\/\S+/)?.[0] : undefined;
+    const issue = diagnosticIssue(id, [block.heading, ...items, ...paths, ...(origin ? [origin] : [])], commands);
+    if (block.level === 'Error') issue.severity = 'error';
+    return issue;
+  });
+  const failedLines = text.split('\n').map(line => line.trim()).filter(line =>
+    /^(?:(?:zsh|bash):\s*)?(?:command not found: brew|brew:\s*(?:command not found|not found))|^(?:fatal:|error:)\s*\S/i.test(line) && !/^Error:/.test(line));
+  if (failedLines.length) issues.push(diagnosticIssue('doctor_command_failure', failedLines));
+  const summaryKind = failedLines.length || blocks.some(block => block.level === 'Error') ? 'errors'
+    : unrecognized ? 'unknown' : blocks.length ? 'known' : 'ready';
+  const assessment = summaryKind === 'known' && issues.length === 1
+    ? { installation_impact: issues[0].installation_impact!, action_required: issues[0].action_required! }
+    : { ...HOMEBREW_CN_DOCTOR_SUMMARIES[summaryKind] };
+  return { issues, doctor: { warning_count: issues.length, unrecognized_count: unrecognized,
+    ready: ready && !issues.length, assessment } };
+}
+
+// A natural-language follow-up is not a log. Keep direct analysis tied to
+// actual supplied evidence; conversational interpretation belongs to the model.
+export function hasLocalEnvironmentEvidence(text: string): boolean {
+  return hasHomebrewDiagnosticReport(text)
+    || /(?:command not found: brew|brew: command not found|brew:\s*not found)/i.test(text)
+    || /^\s*(?:export\s+)?(?:PATH|HOMEBREW_[A-Z_]+|https?_proxy|all_proxy)\s*[:=]/mi.test(text)
+    || /^\s*(?:fatal:|Error:|Warning:|url\..*insteadof\s)/mi.test(text);
+}
+
+// Only fill the missing side from the immediately relevant earlier report.
+// New output from a side always replaces its previous snapshot.
+export function combineConfigurationReports(currentText: string, previousText?: string): string {
+  if (!previousText || analyzeDoctor(redactDiagnosticText(currentText))) return currentText;
+  const current = analyzeConfiguration(redactDiagnosticText(currentText))?.configuration;
+  const previous = analyzeConfiguration(redactDiagnosticText(previousText))?.configuration;
+  if (!current || !previous || current.terminal_provided === current.desktop_provided) return currentText;
+  const missingSide = current.terminal_provided ? 'desktop' : 'terminal';
+  if (!(missingSide === 'desktop' ? previous.desktop_provided : previous.terminal_provided)) return currentText;
+  const fragments = previous.sources.filter(source => sectionKind(source.source) === missingSide
+    || (['file', 'shell'].includes(sectionKind(source.source)) && !current.sources.some(item => item.source === source.source)))
+    .map(source => `[${source.source}]\n${Object.entries(source.values).map(([key, values]) => values.map(value => `${key}: ${value}`).join('\n')).join('\n')}`);
+  if (!fragments.length) return currentText;
+  return `${currentText}\n\n另一侧信息来自本次对话中较早提供的报告，并非重新检查：\n${fragments.join('\n\n')}`;
+}
+
+function analyzeConfiguration(text: string): { issues: AnalyzeIssue[]; configuration: ConfigurationComparison } | null {
+  const sections: Array<{ source: string; kind: ReturnType<typeof sectionKind>; values: Record<string, string[]> }> = [];
+  let section = { source: '未标注来源', kind: 'unknown' as ReturnType<typeof sectionKind>, values: {} as Record<string, string[]> };
+  sections.push(section);
+  const invalid: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    const label = configSection(line);
+    if (label !== null) {
+      section = { source: label, kind: sectionKind(label), values: {} };
+      sections.push(section);
+      continue;
+    }
+    const assignment = line.match(/^\s*(export\s+)?([A-Z_]+)\s*[:=]\s*(.*?)\s*$/);
+    if (!assignment || !CONFIG_KEYS.has(assignment[2])) continue;
+    const [, exported, key, raw] = assignment;
+    if (section.kind === 'file' && (exported || /\$|`/.test(raw))) invalid.push(`${section.source}: ${key}`);
+    const value = raw.replace(/^(['"])(.*)\1$/, '$2');
+    (section.values[key] ??= []).push(value);
+  }
+  if (!sections.some(item => Object.keys(item.values).length && item.kind !== 'unknown')
+    && !sections[0].values.HOMEBREW_PREFIX) return null;
+  const provided = (kind: string) => sections.some(item => item.kind === kind && Object.keys(item.values).length);
+  const files = sections.filter(item => item.kind === 'file' || item.kind === 'shell');
+  const keys = [...REPORT_KEYS].filter(key => sections.some(item => item.values[key]));
+  const observed = (kind: string, key: string): string | null => {
+    const values = sections.filter(item => item.kind === kind).flatMap(item => item.values[key] ?? []);
+    const unique = [...new Set(values)];
+    return unique.length === 1 ? unique[0] : null;
+  };
+  const rows: ConfigurationRow[] = keys.map(key => {
+    const terminal = observed('terminal', key);
+    const desktop = observed('desktop', key);
+    const comparable = terminal !== null && desktop !== null && !/\[redacted[^\]]*\]/.test(terminal + desktop);
+    return {
+      key, label: CONFIG_LABELS[key] ?? key, terminal, desktop,
+      status: comparable ? (terminal === desktop ? 'same' : 'different') : 'incomplete',
+      candidate_sources: files.filter(file => file.values[key]?.some(value => (value === terminal || value === desktop)
+        && !/\[redacted[^\]]*\]/.test(value))).map(file => file.source),
+    };
+  });
+  const issues: AnalyzeIssue[] = [];
+  const differences = rows.filter(row => row.status === 'different');
+  if (differences.length) {
+    const issue = diagnosticIssue('configuration_difference', differences.map(row => row.key));
+    if (rows.some(row => row.key === 'HOMEBREW_PREFIX' && row.status === 'same')) {
+      issue.suggestion = HOMEBREW_CN_DIAGNOSTIC_RULES.configuration_difference.same_prefix_suggestion;
+    }
+    issues.push(issue);
+  }
+  if (!provided('terminal') || !provided('desktop') || rows.some(row => row.status === 'incomplete') || !rows.length) {
+    const rule = HOMEBREW_CN_DIAGNOSTIC_RULES.configuration_incomplete;
+    const issue = diagnosticIssue('configuration_incomplete');
+    issue.suggestion = provided('terminal') && provided('desktop') ? rule.both_reports_suggestion
+      : provided('desktop') ? rule.missing_terminal_suggestion
+      : provided('terminal') ? rule.missing_desktop_suggestion : rule.missing_source_suggestion;
+    issues.push(issue);
+  }
+  const conflicts = MIRROR_KEYS.filter(key => {
+    const all = files.flatMap(file => file.values[key] ?? []);
+    return new Set(all).size > 1 || files.some(file => (file.values[key]?.length ?? 0) > 1);
+  });
+  if (conflicts.length) issues.push(diagnosticIssue('configuration_file_conflict', conflicts));
+  if (invalid.length) issues.push(diagnosticIssue('configuration_invalid_env', invalid));
+  return { issues, configuration: {
+    terminal_provided: provided('terminal'), desktop_provided: provided('desktop'), rows,
+    sources: sections.filter(item => Object.keys(item.values).length).map(({ source, values }) => ({ source, values })),
+  } };
+}
+
+export function analyzeHomebrewText(input: string): AnalyzeResult {
+  const text = redactDiagnosticText(input);
+  const doctor = analyzeDoctor(text.replace(/\*\*/g, ''));
+  const configuration = analyzeConfiguration(text);
+  if (doctor || configuration) {
+    const issues = [...(doctor?.issues ?? []), ...(configuration?.issues ?? [])];
+    return {
+      ok: true, scope: 'provided_text', analyzed_lines: text.split(/\r?\n/).length,
+      issues_found: issues.length, issues,
+      ...(doctor ? { doctor: doctor.doctor } : {}),
+      ...(configuration ? { configuration: configuration.configuration } : {}),
+    };
+  }
   const issues: AnalyzeIssue[] = [];
   const lines = text.split(/\r?\n/);
 
@@ -616,23 +876,9 @@ export function analyzeHomebrewText(text: string): AnalyzeResult {
     issues.push({
       id: 'brew_missing_from_path',
       severity: 'error',
-      title: 'Homebrew 未配置进系统环境变量 (PATH)',
-      message: 'Homebrew 已成功下载，但在当前的 Shell 环境变量中找不到 `brew` 命令。',
-      suggestion: isArm64 || hasOptBrew
-        ? [
-          '确认 `~/.zshrc` 内容无误后，可在终端分行执行：',
-          '```zsh',
-          'echo \'eval "$(/opt/homebrew/bin/brew shellenv)"\' >> ~/.zshrc',
-          'source ~/.zshrc',
-          '```',
-        ].join('\n')
-        : [
-          '确认 `~/.zshrc` 内容无误后，可在终端分行执行：',
-          '```zsh',
-          'echo \'eval "$(/usr/local/bin/brew shellenv)"\' >> ~/.zshrc',
-          'source ~/.zshrc',
-          '```',
-        ].join('\n'),
+      title: '当前信息未确认 brew 在 PATH 中可用',
+      message: '提供的输出提示当前环境可能找不到 brew；仅凭这些信息不能确认 Homebrew 已安装成功。',
+      suggestion: '先提供 command -v brew、brew --version 和实际安装路径的输出，区分未安装、PATH 缺失和不同启动环境。确认 prefix 后先临时验证，不要直接重复追加 shell 配置。',
     });
   }
 
@@ -665,9 +911,19 @@ export function analyzeHomebrewText(text: string): AnalyzeResult {
     issues.push({
       id: 'duplicate_bottle_domain',
       severity: 'warning',
-      title: '重复的二进制源配置 (HOMEBREW_BOTTLE_DOMAIN)',
-      message: '您的 Shell 配置文件中导出了多个 `HOMEBREW_BOTTLE_DOMAIN` 环境变量，可能会导致冲突或加载顺序问题。',
-      suggestion: '请清理配置文件，只保留一个最新的镜像源环境变量。',
+      title: '多处二进制源配置 (HOMEBREW_BOTTLE_DOMAIN)',
+      message: '提供的信息中出现了多个 HOMEBREW_BOTTLE_DOMAIN；需要核对配置文件来源和有效值，不能据此断定本机已经发生冲突。',
+      suggestion: '已安装 Homebrew 时可运行 --configure 配置模式，按提示检查并迁移镜像设置至 prefix/etc/homebrew/brew.env，同时处理用户级或 XDG 配置中的覆盖值。',
+    });
+  }
+
+  if (lines.some((line) => /^\s*export\s+HOMEBREW_(?:BREW_GIT_REMOTE|CORE_GIT_REMOTE|BOTTLE_DOMAIN|API_DOMAIN)=/.test(line))) {
+    issues.push({
+      id: 'legacy_mirror_shell_config',
+      severity: 'info',
+      title: '镜像设置使用 shell export',
+      message: '贴出的镜像配置使用了 shell export。BrewUI 的隔离环境不会读取 .zshrc；这不等于已经确认本机没有 brew.env。',
+      suggestion: '使用现有安装的 --configure 模式检查并迁移共享镜像配置。brew.env 使用 NAME=value，不加 export；PATH 与 brew shellenv 仍保留在 shell 配置中。',
     });
   }
 
@@ -676,12 +932,13 @@ export function analyzeHomebrewText(text: string): AnalyzeResult {
     analyzed_lines: lines.length,
     issues_found: issues.length,
     issues,
+    scope: 'provided_text',
   };
 }
 
 export function inferFixOptions(text: string, issues: AnalyzeIssue[]): FixOptions | null {
   const issueIds = issues
-    .filter((issue) => issue.id === 'brew_missing_from_path' || issue.id === 'git_insteadof_conflict' || issue.id === 'duplicate_bottle_domain')
+    .filter((issue) => ['brew_missing_from_path', 'git_insteadof_conflict', 'duplicate_bottle_domain', 'legacy_mirror_shell_config'].includes(issue.id))
     .map((issue) => issue.id);
 
   if (!issueIds.length) return null;
@@ -705,13 +962,8 @@ export function inferFixOptions(text: string, issues: AnalyzeIssue[]): FixOption
   };
 }
 
-export function generateFixScript({ issue_ids, os_type, shell_type, arch }: FixOptions): string {
-  const scriptLines = ['# homebrew-cn 自动生成的环境修复命令', '# 执行前请确认路径及内容无误'];
-  const shellProfile = shell_type === 'zsh'
-    ? '~/.zshrc'
-    : (os_type === 'macos' ? '~/.bash_profile' : '~/.bashrc');
-
-  let needsShellSource = false;
+export function generateFixScript({ issue_ids, os_type, arch }: FixOptions): string {
+  const scriptLines = ['# homebrew-cn 根据已提供信息生成的验证与配置命令', '# 尚未执行本机诊断；执行前请确认路径，迁移时保留配置备份'];
   let stepNumber = 1;
 
   if (issue_ids.includes('brew_missing_from_path')) {
@@ -719,29 +971,29 @@ export function generateFixScript({ issue_ids, os_type, shell_type, arch }: FixO
       ? '/home/linuxbrew/.linuxbrew'
       : (arch === 'arm64' ? '/opt/homebrew' : '/usr/local');
     scriptLines.push('');
-    scriptLines.push(`# ${stepNumber++}. 将 Homebrew 注入 Shell 配置文件 (${shellProfile})`);
-    scriptLines.push(`echo 'eval "$(${prefix}/bin/brew shellenv)"' >> ${shellProfile}`);
-    needsShellSource = true;
+    scriptLines.push(`# ${stepNumber++}. 仅在已存在可执行文件时临时验证 PATH`);
+    scriptLines.push(`if [ -x "${prefix}/bin/brew" ]; then`);
+    scriptLines.push(`  eval "$(${prefix}/bin/brew shellenv)"`);
+    scriptLines.push('  brew --version');
+    scriptLines.push('else');
+    scriptLines.push('  echo "未找到预期的 brew 可执行文件，请先确认安装位置。"');
+    scriptLines.push('fi');
+    scriptLines.push('# 临时验证成功后，再确认对应 shell profile 的持久 PATH 配置。');
   }
 
   if (issue_ids.includes('git_insteadof_conflict')) {
     scriptLines.push('');
-    scriptLines.push(`# ${stepNumber++}. 备份现有的 Git 配置并提示用户排查 insteadOf 规则`);
+    scriptLines.push(`# ${stepNumber++}. 查看可能影响 Homebrew 的 insteadOf 规则`);
     scriptLines.push('echo "建议运行以下命令查看可能冲突的全局 Git 代写规则："');
     scriptLines.push('echo "  git config --global --get-regexp \\"url\\..*\\""');
   }
 
-  if (issue_ids.includes('duplicate_bottle_domain')) {
+  if (issue_ids.includes('duplicate_bottle_domain') || issue_ids.includes('legacy_mirror_shell_config')) {
     scriptLines.push('');
-    scriptLines.push(`# ${stepNumber++}. 提示清理 ${shellProfile} 中的冗余环境变量`);
-    scriptLines.push(`echo "检测到 ${shellProfile} 中存在重复的 HOMEBREW_BOTTLE_DOMAIN。请使用编辑器手动打开该文件并清理冗余行。"`);
-  }
-
-  if (needsShellSource) {
-    scriptLines.push('');
-    scriptLines.push(`# ${stepNumber++}. 让配置立即在当前终端生效`);
-    scriptLines.push(`source ${shellProfile}`);
-    scriptLines.push('echo "修复完毕。请尝试运行 brew --version 验证是否成功。"');
+    scriptLines.push(`# ${stepNumber++}. 为现有 Homebrew 交互配置共享镜像，无需重新安装`);
+    scriptLines.push('# 按提示迁移旧 shell exports，检查用户/XDG 覆盖配置；持久镜像设置写入 prefix/etc/homebrew/brew.env。');
+    scriptLines.push(os_type === 'linux' ? HOMEBREW_CN_LINUX_CONFIGURE_COMMAND : HOMEBREW_CN_CONFIGURE_COMMAND);
+    scriptLines.push(os_type === 'linux' ? '# 完成后打开新终端验证。' : '# 完成后打开新终端；若使用 BrewUI，退出后重新打开再验证。');
   }
 
   return scriptLines.join('\n');
@@ -1154,9 +1406,9 @@ export function createHomebrewTools(options: ToolOptions) {
     tool({
       name: 'analyze',
       description:
-        'Analyze the user\'s local terminal logs, environment variables, or shell profiles (.zshrc, .bashrc). Detects incorrect PATH variables, Rosetta/Apple Silicon architecture mismatches, broken proxy settings, and conflicting git insteadOf configuration rules.',
+        'Analyze user-provided Homebrew Doctor warnings, labeled Terminal/BrewUI configuration reports, selected mirror assignments or terminal logs. Returns evidence, Chinese guidance, configuration comparisons and verification steps. Does not inspect or modify the local computer.',
       parameters: z.object({
-        text: z.string().describe('The raw terminal output, environment variable list (env), or shell configuration file content copy-pasted by the user.'),
+        text: z.string().describe('User-provided Doctor output or labeled [terminal]/[desktop] reports and selected mirror settings. Do not request a full env dump; redact credentials before sharing.'),
       }),
       execute({ text }) {
         return JSON.stringify(analyzeHomebrewText(text), null, 2);

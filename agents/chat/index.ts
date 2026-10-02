@@ -8,8 +8,8 @@ import {
   type AgentEnv,
 } from '../_model';
 import { createLogger, createSSEResponse, jsonResponse, sseEvent, truncateText } from '../_shared';
-import { buildSystemPrompt, buildUserInput } from './_prompt';
-import { HOMEBREW_CN_INSTALL_COMMAND, buildIntentClassificationPrompt } from './_skill';
+import { buildSystemPrompt, buildUserInput, shouldCheckDesktopConfigurationFirst, diagnosticRequestText, hasExplicitMirrorProbeRequest } from './_prompt';
+import { HOMEBREW_CN_INSTALL_COMMAND, HOMEBREW_CN_CONFIGURE_COMMAND, HOMEBREW_CN_RESTORE_OFFICIAL_REPLY, HOMEBREW_CN_DIAGNOSTIC_RULES, HOMEBREW_CN_CONVERSATION_COPY, buildIntentClassificationPrompt } from './_skill';
 import {
   analyzeHomebrewText,
   checkHomebrewFormulaIndex,
@@ -17,6 +17,10 @@ import {
   diagnoseHomebrewMirrors,
   generateFixScript,
   inferFixOptions,
+  hasHomebrewDiagnosticReport,
+  hasLocalEnvironmentEvidence,
+  combineConfigurationReports,
+  redactDiagnosticText,
   probeHomebrewMirrorsDeep,
 } from './_tools';
 
@@ -26,8 +30,8 @@ const AGENT_ROUTE_PATH = '/chat';
 
 export async function onRequestPost(context: any) {
   const body = context.request?.body ?? {};
-  const message = typeof body.message === 'string' ? body.message.trim() : '';
-  const extraContext = typeof body.context === 'string' ? body.context : undefined;
+  const message = typeof body.message === 'string' ? redactDiagnosticText(body.message.trim()) : '';
+  const extraContext = typeof body.context === 'string' ? redactDiagnosticText(body.context) : undefined;
   const pastedImages = normalizePastedImages(body.images);
   const signal = context.request?.signal as AbortSignal | undefined;
 
@@ -63,15 +67,16 @@ export async function onRequestPost(context: any) {
     async function* () {
       try {
         const combinedContext = extraContext ?? '';
-        yield sseEvent({ type: 'thinking', content: '已收到问题，正在进行意图识别…' });
+        yield sseEvent({ type: 'thinking', content: '正在阅读你的问题…' });
 
         const session = await sessionPromise;
+        const history = session ? await sessionItemsToMessages(session) : [];
         const intent = await withTrace(observability, 'classify_intent', {
           'agent.step': 'intent',
           'input.length': message.length,
           'input.has_context': Boolean(combinedContext.trim()),
         }, async (span) => {
-          const result = await classifyIntent(message, combinedContext, session, env, observability, signal);
+          const result = applyConversationIntentGuard(applyDesktopIntentGuard(await classifyIntent(message, combinedContext, session, env, observability, signal, history), message, combinedContext), message, combinedContext, history);
           usageTotals.add(result.usage);
           setTraceAttributes(span, {
             'intent.route': result.route,
@@ -90,16 +95,25 @@ export async function onRequestPost(context: any) {
         yield sseEvent({ type: 'tool_call', name: 'intent_classify', arguments: JSON.stringify({ message }) });
         yield sseEvent({ type: 'tool_result', name: 'intent_classify', content: JSON.stringify(publicIntent(intent)) });
 
+        const direct = (events: AsyncIterable<string> | Iterable<string>) => withUsageFooter(persistDirectExchange(events, {
+          session, signal, userInput: buildUserInput(message, combinedContext),
+        }), usageTotals);
+
+        const casualReply = getCasualReplyKind(message, combinedContext);
+        if (intent.route === 'conversation' && casualReply) {
+          yield* direct([sseEvent({ type: 'ai_response', content: HOMEBREW_CN_CONVERSATION_COPY.replies[casualReply] })]);
+          return;
+        }
+
         if (!intent.is_homebrew_related) {
           yield* withTraceStream(observability, 'direct_reject', {
             'agent.step': 'reject',
             'intent.route': intent.route,
           }, async function* () {
-            yield sseEvent({
+            yield* direct([sseEvent({
               type: 'ai_response',
               content: '我是 homebrew-cn Agent，主要处理 Homebrew 安装、镜像源、软件包安装查询和本地环境排查。这个问题不属于 Homebrew 或本助手能力范围，因此我不能继续回答。你可以把 Homebrew 安装日志、终端报错、镜像源问题或软件包安装问题发给我。',
-            });
-            yield* usageEventStream(usageTotals.snapshot());
+            })]);
           });
           return;
         }
@@ -108,7 +122,7 @@ export async function onRequestPost(context: any) {
           yield* withTraceStream(observability, 'direct_model_identity', {
             'agent.step': 'model_identity',
             'intent.route': intent.route,
-          }, () => withUsageFooter(runDirectModelIdentity(), usageTotals));
+          }, () => direct(runDirectModelIdentity()));
           return;
         }
 
@@ -116,7 +130,7 @@ export async function onRequestPost(context: any) {
           yield* withTraceStream(observability, 'direct_restore_official', {
             'agent.step': 'restore_official',
             'intent.route': intent.route,
-          }, () => withUsageFooter(runDirectRestoreOfficial(), usageTotals));
+          }, () => direct(runDirectRestoreOfficial()));
           return;
         }
 
@@ -129,7 +143,7 @@ export async function onRequestPost(context: any) {
             'tool.sandbox_available': Boolean(context.sandbox),
             'input.value': '{}',
             'input.mime_type': 'application/json',
-          }, (span) => withUsageFooter(runDirectDiagnostics({ sandbox: context.sandbox, signal, traceSpan: span }), usageTotals));
+          }, (span) => direct(runDirectDiagnostics({ sandbox: context.sandbox, signal, traceSpan: span })));
           return;
         }
 
@@ -139,7 +153,7 @@ export async function onRequestPost(context: any) {
             'intent.route': intent.route,
             'openinference.span.kind': 'TOOL',
             'tool.name': 'formula_check',
-          }, (span) => withUsageFooter(runDirectFormulaCheck({ message, extraContext: combinedContext, signal, traceSpan: span }), usageTotals));
+          }, (span) => direct(runDirectFormulaCheck({ message, extraContext: combinedContext, signal, traceSpan: span })));
           return;
         }
 
@@ -148,12 +162,12 @@ export async function onRequestPost(context: any) {
             'agent.step': 'brew_missing',
             'intent.route': intent.route,
             'input.image_count': pastedImages.length,
-          }, () => withUsageFooter(runBrewMissingTroubleshooting({
+          }, () => direct(runBrewMissingTroubleshooting({
             message,
             extraContext: combinedContext,
             pastedImageCount: pastedImages.length,
             signal,
-          }), usageTotals));
+          })));
           return;
         }
 
@@ -163,18 +177,20 @@ export async function onRequestPost(context: any) {
             'intent.route': intent.route,
             'openinference.span.kind': 'TOOL',
             'tool.name': 'analyze',
-          }, (span) => withUsageFooter(runDirectAnalysisAndFix({ message, extraContext: combinedContext, signal, traceSpan: span }), usageTotals));
+          }, (span) => withUsageFooter(runDirectAnalysisAndFix({ message, extraContext: combinedContext, signal, traceSpan: span, session,
+            previousReport: isNewTopic(message) ? undefined : findPreviousReport(history),
+          }), usageTotals));
           return;
         }
 
         const systemPrompt = buildSystemPrompt(message);
         const userInput = buildUserInput(message, combinedContext);
 
-        const allowedTools = getAllowedTools();
+        const allowedTools = intent.route === 'conversation' ? [] : getAllowedTools(message, combinedContext);
 
         const enableThinking =
           context.env?.AI_GATEWAY_ENABLE_THINKING !== 'false' &&
-          needsThinking(message, combinedContext);
+          intent.route !== 'conversation' && needsThinking(message, combinedContext);
 
         yield sseEvent({ type: 'thinking', content: '正在分析你的问题…' });
 
@@ -190,7 +206,7 @@ export async function onRequestPost(context: any) {
           instructions: systemPrompt,
           model: createGatewayModel(env),
           modelSettings: {
-            parallelToolCalls: true,
+            ...(tools.length ? { parallelToolCalls: true } : {}),
             providerData: gatewayThinkingSettings(env, enableThinking),
           },
           tools,
@@ -476,6 +492,7 @@ function* usageEventStream(usage: UsagePayload | null): Generator<string> {
 
 type IntentRoute =
   | 'model_identity'
+  | 'conversation'
   | 'restore_official'
   | 'mirror_probe_deep'
   | 'formula_check'
@@ -493,6 +510,83 @@ interface IntentClassification {
   usage?: Record<string, number> | null;
 }
 
+type ConversationMessage = { role: 'user' | 'assistant' | 'system'; content: string };
+type CasualReplyKind = keyof typeof HOMEBREW_CN_CONVERSATION_COPY.replies;
+
+function getCasualReplyKind(message: string, extraContext?: string): CasualReplyKind | null {
+  if (extraContext?.trim()) return null;
+  const compact = message.trim().toLowerCase().replace(/[\s，。！？!?.,~～]/g, '');
+  if (/^(你好(?:呀|啊)?|您好|嗨|哈喽|hello|hi|hey)$/.test(compact)) return 'greeting';
+  if (/^(谢谢(?:你|啦|了)?|感谢|多谢|thanks|thankyou|thx)$/.test(compact)) return 'thanks';
+  if (/^(好了|解决了|可以了|搞定了|修好了|fixed|done)(?:谢谢|thanks)?$/.test(compact)) return 'resolved';
+  if (/^(明白了|懂了|好的|好|ok|okay|understood)(?:谢谢|thanks)?$/.test(compact)) return 'acknowledgement';
+  if (/^(你能做什么|你能帮我什么|你有什么功能|怎么使用这个助手|whatcanyoudo)$/.test(compact)) return 'capabilities';
+  return null;
+}
+
+function isNewTopic(message: string): boolean {
+  return /换个问题|换一个问题|新问题|换个话题|另外(?:一个|问)|不(?:诊断|排查)了|另一台|新电脑|别的机器|different (?:topic|question)|new question/i.test(diagnosticRequestText(message));
+}
+
+function isContextualFollowup(message: string): boolean {
+  return /^(?:那|所以|然后)|刚才|上面|这个|这些|那个|它|第[一二三四五六七八九十\d]+(?:条|个)|下一步|没看懂|简单(?:点|一点)|解释简单|临时验证成功|改好了|处理好了|还是(?:失败|不行|很慢)|可以先不|还能.{0,8}(?:装|安装)|(?:先不处理|需要处理|影响安装|带我做)/i.test(message);
+}
+
+function applyConversationIntentGuard(intent: IntentClassification, message: string, extraContext: string | undefined, history: ConversationMessage[]): IntentClassification {
+  const evidence = hasLocalEnvironmentEvidence([message, extraContext].filter(Boolean).join('\n'));
+  const casual = getCasualReplyKind(message, extraContext);
+  const explicitProbe = hasExplicitMirrorProbeRequest(diagnosticRequestText(message));
+  const packageRequest = diagnosticRequestText(message);
+  const packageTarget = extractKnownPackageAlias(packageRequest) || extractFormulaQueryCandidate(packageRequest)
+    || packageRequest.match(/\bbrew\s+(?:install|info|search)\s+(?:--cask\s+)?([a-z0-9@+._-]+)/i)?.[1]
+    || packageRequest.match(/(?:安装|查询|搜索|查一下|装)\s*([a-z0-9@+._-]+)/i)?.[1] || '';
+  const explicitPackage = intent.route === 'formula_check' && Boolean(packageTarget) && !/^(?:it|that|this|them)$/i.test(packageTarget);
+  const contextFollowup = !evidence && !isNewTopic(message) && history.some(item => item.role === 'assistant') && isContextualFollowup(message);
+  if (casual || (!evidence && intent.route === 'analysis_fix')
+    || (contextFollowup && !explicitProbe && !explicitPackage && !['restore_official', 'model_identity'].includes(intent.route))) {
+    return { ...intent, route: 'conversation', is_homebrew_related: true, needs_sandbox: false,
+      reason: casual ? '简短日常回应，无需检测。' : '沿用对话中的信息回答追问，不把追问当作新日志。' };
+  }
+  // A fresh report always gets its evidence route, even if the classifier
+  // carries forward an earlier conversational acknowledgement.
+  if (intent.route === 'conversation' && hasHomebrewDiagnosticReport([message, extraContext].filter(Boolean).join('\n'))) {
+    return applyDesktopIntentGuard({ ...intent, route: 'analysis_fix' }, message, extraContext);
+  }
+  return intent;
+}
+
+function findPreviousReport(history: ConversationMessage[]): string | undefined {
+  for (const item of [...history].reverse()) {
+    if (item.role !== 'user') continue;
+    if (hasHomebrewDiagnosticReport(item.content)) return item.content;
+    if (isNewTopic(item.content)) return undefined;
+    if (getCasualReplyKind(item.content) === 'resolved') return undefined;
+    if (!getCasualReplyKind(item.content) && !isContextualFollowup(item.content)) return undefined;
+  }
+  return undefined;
+}
+
+async function* persistDirectExchange(events: AsyncIterable<string> | Iterable<string>, options: { session?: Session; signal?: AbortSignal; userInput: string }) {
+  let reply = '';
+  let failed = false;
+  for await (const chunk of events) {
+    if (options.signal?.aborted) return;
+    const event = safeParseJson(chunk.replace(/^data:\s*/, '').trim());
+    if (event?.type === 'ai_response' && typeof event.content === 'string') reply += event.content;
+    if (event?.type === 'error_message') failed = true;
+    yield chunk;
+  }
+  if (!options.session || !reply.trim() || failed || options.signal?.aborted) return;
+  try {
+    await options.session.addItems([
+      { type: 'message', role: 'user', content: redactDiagnosticText(options.userInput) },
+      { role: 'assistant', type: 'message', status: 'completed', content: [{ type: 'output_text', text: redactDiagnosticText(reply) }] },
+    ]);
+  } catch (error) {
+    logger.error('Failed to save completed exchange:', error);
+  }
+}
+
 function publicIntent(intent: IntentClassification) {
   return {
     ok: intent.ok,
@@ -503,6 +597,46 @@ function publicIntent(intent: IntentClassification) {
   };
 }
 
+function applyDesktopIntentGuard(intent: IntentClassification, message: string, extraContext?: string): IntentClassification {
+  const request = diagnosticRequestText(message);
+  const report = hasHomebrewDiagnosticReport([message, extraContext].filter(Boolean).join('\n'));
+  if (report) {
+    const explicitProbe = hasExplicitMirrorProbeRequest(request);
+    const restoreRequest = request
+      .replace(/(?:不要|不用|无需|别|不必)[^，。;\n]{0,12}(?:恢复|切回|还原|重置)[^，。;\n]{0,12}官方(?:源)?/g, '')
+      .replace(/(?:do not|don't|no need to)\s+restore[^,.;\n]{0,20}(?:official|upstream)/gi, '');
+    const explicitRestore = /(?:恢复|切回|还原|重置).{0,12}官方|restore.{0,20}(?:official|upstream)/i.test(restoreRequest);
+    const explicitPackage = /\bbrew\s+(?:install|info|search)\s+\S+|(?:安装|查询).{0,20}(?:软件包|应用)|(?:软件包|应用).{0,20}(?:安装|查询)/i.test(request);
+    if (explicitProbe || explicitRestore) return {
+      ...intent, is_homebrew_related: true, route: explicitRestore ? 'restore_official' : 'mirror_probe_deep',
+      needs_sandbox: !explicitRestore, reason: '按用户在报告之外明确提出的操作处理。',
+    };
+    if (/(?:找不到|不会|不知道).{0,20}(?:报告|页面|信息|终端)|(?:报告|页面|终端).{0,12}(?:在哪|怎么打开)/i.test(request)
+      && /一步一步|教我|怎么|如何/i.test(request)) return {
+      ...intent, is_homebrew_related: true, route: 'general_homebrew', needs_sandbox: false,
+      reason: '用户需要获取信息的操作指引，先解释下一步，并保留已有报告。',
+    };
+    if (!explicitPackage) return {
+      ...intent, is_homebrew_related: true, route: 'analysis_fix', needs_sandbox: false,
+      reason: '分析用户提供的 Doctor 或配置报告；报告中的命令不是操作请求。',
+    };
+  }
+  if (!report && /\bdoctor\b|诊断报告|配置对照|对照.{0,15}(?:终端|桌面)/i.test(request)
+    && !hasExplicitMirrorProbeRequest(request) && ['mirror_probe_deep', 'analysis_fix'].includes(intent.route)) {
+    return { ...intent, route: 'general_homebrew', needs_sandbox: false, reason: '先获取 Doctor 或两端配置报告，不执行云端探测。' };
+  }
+  if (shouldCheckDesktopConfigurationFirst(message, extraContext)
+    && (intent.route === 'mirror_probe_deep' || intent.route === 'analysis_fix')) {
+    return {
+      ...intent,
+      route: 'general_homebrew',
+      needs_sandbox: false,
+      reason: '桌面端与终端配置可能不同，先检查本机 brew.env 配置；未请求云端镜像探测。',
+    };
+  }
+  return intent;
+}
+
 async function classifyIntent(
   message: string,
   extraContext: string | undefined,
@@ -510,7 +644,12 @@ async function classifyIntent(
   env: AgentEnv,
   observability: ObservabilityContext,
   signal?: AbortSignal,
+  history?: ConversationMessage[],
 ): Promise<IntentClassification> {
+  if (getCasualReplyKind(message, extraContext)) return {
+    ok: true, route: 'conversation', is_homebrew_related: true, needs_sandbox: false,
+    reason: '日常短对话，无需调用分类模型或诊断工具。', usage: null,
+  };
   try {
     // The runtime auto-instruments @openai/agents, but this classifier calls the
     // OpenAI-compatible client directly, so it needs an explicit LLM span.
@@ -520,7 +659,7 @@ async function classifyIntent(
       'llm.model_name': resolveGatewayModelName(env),
       'llm.provider': 'openai-compatible',
       'llm.system': 'openai',
-    }, (span) => classifyIntentWithLLM(message, extraContext, session, env, span, signal));
+    }, (span) => classifyIntentWithLLM(message, extraContext, session, env, span, signal, history));
   } catch (error) {
     logger.error('Intent classification failed, falling back to general_homebrew:', error);
     return {
@@ -543,9 +682,10 @@ async function classifyIntentWithLLM(
   env: AgentEnv,
   traceSpan?: TraceSpan,
   signal?: AbortSignal,
+  history?: ConversationMessage[],
 ): Promise<IntentClassification> {
   const client = createGatewayClient(env);
-  const historyMessages = session ? await sessionItemsToMessages(session) : [];
+  const historyMessages = history ?? (session ? await sessionItemsToMessages(session) : []);
 
   const userContent = extraContext?.trim()
     ? `${message}\n\nUser-provided environment context:\n${extraContext.trim()}`
@@ -605,6 +745,7 @@ async function classifyIntentWithLLM(
 
 const VALID_ROUTES: IntentRoute[] = [
   'model_identity',
+  'conversation',
   'restore_official',
   'mirror_probe_deep',
   'formula_check',
@@ -624,17 +765,17 @@ function safeParseJson(value: unknown): Record<string, unknown> | null {
   }
 }
 
-async function sessionItemsToMessages(session: Session): Promise<Array<{ role: 'user' | 'assistant' | 'system'; content: string }>> {
+async function sessionItemsToMessages(session: Session): Promise<ConversationMessage[]> {
   try {
     const items = await session.getItems(16);
     const messages: Array<{ role: 'user' | 'assistant' | 'system'; content: string }> = [];
     for (const item of items) {
       const anyItem = item as any;
-      if (anyItem.type !== 'message') continue;
+      if (anyItem.type !== undefined && anyItem.type !== 'message') continue;
       const role = anyItem.role;
       if (role !== 'user' && role !== 'assistant' && role !== 'system') continue;
       const text = extractMessageText(anyItem.content);
-      if (text) messages.push({ role, content: text });
+      if (text) messages.push({ role, content: redactDiagnosticText(text) });
     }
     return messages;
   } catch (error) {
@@ -660,33 +801,12 @@ function extractMessageText(content: unknown): string {
 async function* runDirectRestoreOfficial() {
   yield sseEvent({
     type: 'thinking',
-    content: '步骤 1：识别为恢复官方源请求；步骤 2：无需联网测速或沙盒；步骤 3：直接使用 Homebrew 官方仓库地址生成恢复命令。',
+    content: '已识别为恢复官方源请求，正在提供现有安装的配置模式与 brew.env 清理指引。',
   });
 
   yield sseEvent({
     type: 'ai_response',
-    content: [
-      '可以。恢复官方源主要做两件事：把 Homebrew 的 Git 远程地址切回 GitHub，并清理 shell 配置里的镜像环境变量。',
-      '',
-      '先执行这些命令：',
-      '',
-      '```bash',
-      'git -C "$(brew --repo)" remote set-url origin https://github.com/Homebrew/brew',
-      '',
-      'if [ -d "$(brew --repo)/Library/Taps/homebrew/homebrew-core" ]; then',
-      '  git -C "$(brew --repo)/Library/Taps/homebrew/homebrew-core" remote set-url origin https://github.com/Homebrew/homebrew-core',
-      'fi',
-      '',
-      'if [ -d "$(brew --repo)/Library/Taps/homebrew/homebrew-cask" ]; then',
-      '  git -C "$(brew --repo)/Library/Taps/homebrew/homebrew-cask" remote set-url origin https://github.com/Homebrew/homebrew-cask',
-      'fi',
-      '',
-      'unset HOMEBREW_BOTTLE_DOMAIN HOMEBREW_API_DOMAIN',
-      'brew update',
-      '```',
-      '',
-      '注意：`unset` 只对当前终端生效。如果之前在 `~/.zshrc`、`~/.bashrc` 或 `~/.bash_profile` 里写过 `HOMEBREW_BOTTLE_DOMAIN`、`HOMEBREW_API_DOMAIN`，需要把对应行删掉后重新打开终端。',
-    ].join('\n'),
+    content: HOMEBREW_CN_RESTORE_OFFICIAL_REPLY,
   });
 }
 
@@ -771,7 +891,7 @@ function summarizeDiagnostics(result: Awaited<ReturnType<typeof diagnoseHomebrew
   const official = result.report.find((item) => item.name === 'Official (官方源)');
 
   const lines = [
-    `在线镜像源诊断完成，用时 ${(result.duration_ms / 1000).toFixed(1)} 秒。`,
+    `在线镜像源诊断完成，用时 ${(result.duration_ms / 1000).toFixed(1)} 秒。本次从云端检测节点探测 Git 仓库，延迟不代表你的本机下载速度。`,
     '',
   ];
 
@@ -784,6 +904,10 @@ function summarizeDiagnostics(result: Awaited<ReturnType<typeof diagnoseHomebrew
       lines.push('');
       lines.push('```bash');
       lines.push(HOMEBREW_CN_INSTALL_COMMAND);
+      lines.push('```');
+      lines.push('已安装 Homebrew 时，使用配置模式切换共享镜像设置，无需重新安装：');
+      lines.push('```bash');
+      lines.push(HOMEBREW_CN_CONFIGURE_COMMAND);
       lines.push('```');
     }
   } else {
@@ -810,13 +934,25 @@ function mirrorInstallChoice(name: string) {
   return null;
 }
 
-function* runDirectAnalysisAndFix(options: {
+interface DirectAnalysisOptions {
   message: string;
   extraContext?: string;
   signal?: AbortSignal;
   traceSpan?: TraceSpan;
-}) {
-  const sourceText = buildAnalysisInput(options.message, options.extraContext);
+  session?: Session;
+  previousReport?: string;
+}
+
+async function* runDirectAnalysisAndFix(options: DirectAnalysisOptions) {
+  const current = redactDiagnosticText(buildAnalysisInput(options.message, options.extraContext));
+  const combined = combineConfigurationReports(current, options.previousReport);
+  yield* persistDirectExchange(runAnalysisAndFixEvents({ ...options, message: combined, extraContext: undefined }, combined !== current), {
+    session: options.session, signal: options.signal, userInput: combined,
+  });
+}
+
+async function* runAnalysisAndFixEvents(options: DirectAnalysisOptions, usedPreviousReport: boolean) {
+  const sourceText = redactDiagnosticText(buildAnalysisInput(options.message, options.extraContext));
   setTraceAttributes(options.traceSpan, {
     'input.value': truncateText(sourceText, 20_000),
     'input.mime_type': 'text/plain',
@@ -857,14 +993,20 @@ function* runDirectAnalysisAndFix(options: {
     'output.mime_type': 'application/json',
   });
 
+  if (options.signal?.aborted) return;
+  const reply = summarizeAnalysis(analysis, Boolean(fixScript)) + (usedPreviousReport ? '\n\n本次对照用了你之前发来的另一份报告，反映的是两次提供的信息；我没有重新检查电脑。' : '');
   yield sseEvent({
     type: 'ai_response',
-    content: summarizeAnalysis(analysis, Boolean(fixScript)),
+    content: reply,
   });
+  if (!options.signal?.aborted && (analysis.configuration || (analysis.doctor && !analysis.doctor.ready))) {
+    yield sseEvent({ type: 'suggest_actions', actions: HOMEBREW_CN_CONVERSATION_COPY.followups[analysis.configuration ? 'configuration' : 'doctor'] });
+  }
 }
 
 function buildAnalysisInput(message: string, extraContext?: string) {
   const text = [message, extraContext].filter(Boolean).join('\n\n');
+  if (hasHomebrewDiagnosticReport(text)) return text;
   if (/找不到.*brew|brew.*找不到|没有.*brew|brew.*not found/i.test(text) && !/command not found: brew|brew: command not found/i.test(text)) {
     return `${text}\ncommand not found: brew`;
   }
@@ -876,8 +1018,44 @@ function summarizeToolInput(text: string) {
 }
 
 function summarizeAnalysis(analysis: ReturnType<typeof analyzeHomebrewText>, hasFix: boolean) {
+  if (analysis.doctor || analysis.configuration) {
+    const cell = (value: string | null) => value === null ? '未提供或无法确认' : value === '' ? '空值（报告原值）' : value.replace(/[&|`<>\[\]()*_!\\~#]/g, character => `&#${character.charCodeAt(0)};`).replace(/\r?\n/g, ' ');
+    const lines: string[] = [];
+    if (analysis.doctor) {
+      lines.push(`**是否影响安装软件：** ${analysis.doctor.assessment.installation_impact}`,
+        `**现在是否需要处理：** ${analysis.doctor.assessment.action_required}`);
+    }
+    if (analysis.configuration) {
+      const differences = analysis.configuration.rows.filter(row => row.status === 'different');
+      const same = analysis.configuration.rows.filter(row => row.status === 'same');
+      if (differences.length) lines.push(`两份信息中有 ${differences.length} 项设置不同：${differences.map(row => cell(row.label)).join('、')}。这些差异值得继续检查，但还不能确认就是下载慢的原因。`);
+      else if (same.length) lines.push(`两份信息里，能够对照的 ${same.length} 项设置相同。暂时没有看到这些设置的差异，但这还不能保证两边的下载速度一样。`);
+      else lines.push('目前的信息还不足以比较桌面版和终端使用的下载设置。');
+      if (analysis.configuration.rows.some(row => row.status === 'incomplete')) lines.push('有些项目没有显示，先保留为未知；这不代表你的电脑设置错了。');
+    }
+    for (const issue of analysis.issues) {
+      lines.push('', `**${issue.title}**`);
+      if (issue.impact_scope) {
+        lines.push(`影响范围：${issue.impact_scope}`);
+        if (analysis.doctor?.warning_count !== 1 || issue.id === 'doctor_unknown' || issue.severity === 'error') {
+          lines.push(`对安装的影响：${issue.installation_impact}`, `是否需要处理：${issue.action_required}`);
+        }
+      }
+      else lines.push(issue.message);
+      const affected = issue.id.startsWith('doctor_') ? issue.evidence?.slice(1).filter(item => !item.startsWith('http')) : [];
+      if (affected?.length) lines.push(`涉及：${affected.map(cell).join('、')}。`);
+    }
+    const nextIssue = analysis.issues.find(issue => issue.severity === 'error') ?? analysis.issues[0];
+    if (nextIssue) {
+      const optional = analysis.doctor && !analysis.configuration && !analysis.doctor.unrecognized_count && analysis.issues.every(issue => issue.severity !== 'error');
+      lines.push(`**${optional ? '如需进一步排查' : '先做这一步'}**\n${nextIssue.suggestion}`);
+    }
+    else if (analysis.configuration) lines.push(`**先做这一步**\n${HOMEBREW_CN_DIAGNOSTIC_RULES.configuration_same.suggestion}`);
+    lines.push('这里只分析你粘贴的信息，尚未检查或修改本机。原始提示、下载地址和后续查询方法可以在上方的详细说明中展开查看。');
+    return lines.join('\n\n');
+  }
   if (!analysis.issues_found) {
-    return '我已经检查了你提供的终端信息，暂时没有发现明显的 PATH、代理或 Git 重定向结构性问题。可以继续贴出完整安装日志，我会进一步定位。';
+    return HOMEBREW_CN_CONVERSATION_COPY.replies.insufficient_evidence;
   }
 
   const severe = analysis.issues.filter((issue) => issue.severity === 'error').length;
@@ -1102,10 +1280,14 @@ function formatSyncStatus(status: string) {
   return labels[status] || status;
 }
 
-function getAllowedTools(): Array<'mirror_probe_deep' | 'formula_check'> {
-  // Always expose both tools so that the LLM has them available in the Agent loop regardless of classification.
+function getAllowedTools(message = '', extraContext?: string): Array<'mirror_probe_deep' | 'formula_check'> {
+  if (/\bdoctor\b|诊断报告|配置对照/i.test(message) && !hasExplicitMirrorProbeRequest(diagnosticRequestText(message))) return ['formula_check'];
+  if (shouldCheckDesktopConfigurationFirst(message, extraContext)) return ['formula_check'];
   return ['mirror_probe_deep', 'formula_check'];
 }
+
+export const __desktopGuidanceTestHooks = { applyDesktopIntentGuard, getAllowedTools, runDirectRestoreOfficial, needsThinking, runDirectAnalysisAndFix,
+  applyConversationIntentGuard, persistDirectExchange, sessionItemsToMessages, getCasualReplyKind, findPreviousReport, limitSessionHistory };
 
 function extractFormulaQuery(message: string, extraContext?: string): string {
   const text = [message, extraContext].filter(Boolean).join(' ').trim();
@@ -1141,6 +1323,7 @@ function extractFormulaQueryCandidate(text: string): string {
     /(?:怎么|如何|怎样|怎麼)\s*(?:安装|装|install)\s*([a-z0-9@+._-]+(?:\s+[a-z0-9@+._-]+){0,3})/i,
     /(?:可以|可不可以|能不能|能否|能|是否)\s*(?:用来|拿来|通过)?\s*(?:安装|装|install)\s*([a-z0-9@+._-]+(?:\s+[a-z0-9@+._-]+){0,3})/i,
     /(?:^|\s)([a-z0-9@+._-]+(?:\s+[a-z0-9@+._-]+){0,3})\s*(?:可以|可不可以|能不能|能否|能|是否)\s*(?:安装|装|install)/i,
+    /(?:^|\s)([a-z0-9@+._-]+(?:\s+[a-z0-9@+._-]+){0,3})\s*(?:怎么|如何|怎样)\s*(?:安装|装|install)/i,
   ];
 
   for (const pattern of patterns) {
@@ -1179,6 +1362,9 @@ export const __formulaQueryTestHooks = {
 };
 
 function needsThinking(message: string, extraContext?: string): boolean {
+  // Desktop configuration guidance is a bounded explanation from the skill,
+  // even when the symptom contains "failed" or a long configuration excerpt.
+  if (shouldCheckDesktopConfigurationFirst(message, extraContext)) return false;
   if (extraContext && extraContext.trim().length > 50) return true;
   if (/error|failed|fatal|crash|cannot|unable|refused|timeout|ssl_error|Traceback|exit code|segfault/i.test(message)) return true;
   if (/为什么|怎么回事|原因|排查|诊断|失败了|不生效|没有效果|还是不行|依然|一直|总是/i.test(message)) return true;
@@ -1331,5 +1517,24 @@ function limitSessionHistory(historyItems: any[], newItems: any[]) {
   if (historyItems.length <= MAX_HISTORY_ITEMS) {
     return [...historyItems, ...newItems];
   }
-  return [...historyItems.slice(-MAX_HISTORY_ITEMS), ...newItems];
+  const recent = historyItems.slice(-MAX_HISTORY_ITEMS);
+  const question = newItems.map(item => extractMessageText(item.content)).join('\n');
+  // Keep the active report and its assessment while discussing it, even when
+  // several short follow-ups push it outside the ordinary recent-turn window.
+  if (isContextualFollowup(question) && !isNewTopic(question)) {
+    const messages = historyItems.filter(item => (!item.type || item.type === 'message') && ['user', 'assistant'].includes(item.role))
+      .map(item => ({ role: item.role, content: extractMessageText(item.content) }));
+    const report = findPreviousReport(messages);
+    if (report) {
+      let index = -1;
+      for (let i = historyItems.length - 1; i >= 0; i--) {
+        if (historyItems[i].role === 'user' && extractMessageText(historyItems[i].content) === report) { index = i; break; }
+      }
+      if (index >= 0 && index < historyItems.length - MAX_HISTORY_ITEMS) {
+        const anchor = historyItems.slice(index, index + 2).filter(item => !recent.includes(item));
+        return [...anchor, ...recent, ...newItems];
+      }
+    }
+  }
+  return [...recent, ...newItems];
 }

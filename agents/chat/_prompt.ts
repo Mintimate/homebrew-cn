@@ -1,12 +1,7 @@
 import { buildSkillInstructions } from './_skill';
 
-export function buildSystemPrompt(userMessage: string, extraGuidance?: string): string {
-  const canonicalGuidance = inferCanonicalGuidance(userMessage);
-
-  return buildSkillInstructions({
-    canonicalGuidance,
-    extraGuidance,
-  });
+export function buildSystemPrompt(_userMessage: string, extraGuidance?: string): string {
+  return buildSkillInstructions({ extraGuidance });
 }
 
 export function buildUserInput(message: string, contextText?: string): string {
@@ -19,50 +14,24 @@ export function buildUserInput(message: string, contextText?: string): string {
   ].join('\n');
 }
 
-function inferCanonicalGuidance(message: string): string {
-  const text = message.toLowerCase();
-  const arm64PathIssue = /command not found: brew|brew: command not found/.test(text) && /m1|m2|m3|m4|apple silicon|arm64/i.test(text);
-  const resetOfficial = /恢复官方|重置官方|官方源|reset official|restore official/.test(text);
+// Enforce the narrow desktop exception documented in references/intent-routing.md.
+// The classifier and response guidance remain generated from the skill Markdown.
+export function shouldCheckDesktopConfigurationFirst(message: string, contextText?: string): boolean {
+  const text = [message, contextText].filter(Boolean).join('\n');
+  const desktop = /\bBrewUI\b|\bGUI\b|\bDock\b|桌面端|图形界面|Homebrew\s+desktop/i.test(text);
+  const configurationSymptom = /慢|失败|不生效|不读取|不走|不一致|换源|镜像|配置|brew\.env|\.zshrc|slow|fail|config|mirror|environment/i.test(text);
+  if (!desktop || !configurationSymptom) return false;
 
-  if (arm64PathIssue) {
-    return [
-      'The user is on Apple Silicon macOS and brew command is not found.',
-      'Explain that Apple Silicon Macs install Homebrew to `/opt/homebrew` instead of `/usr/local`.',
-      'Do not immediately persist changes to `~/.zshrc` or generate repair commands.',
-      'First ask for read-only troubleshooting output. If the user already pasted output showing `Homebrew <version>`, `/opt/homebrew/bin/brew`, or PATH containing `/opt/homebrew/bin`, state that the current terminal is already OK.',
-      'Only provide temporary validation commands if the output is still inconclusive:',
-      '```zsh',
-      'command -v brew || echo "brew-not-in-PATH"',
-      'brew --version',
-      'echo "$PATH"',
-      '```',
-    ].join('\n');
-  }
+  return !hasExplicitMirrorProbeRequest(diagnosticRequestText(message));
+}
 
-  if (resetOfficial) {
-    return [
-      'The user wants to restore Homebrew to the official upstream repositories.',
-      'Explain that they can use the script to switch back, or run the official git commands manually.',
-      'Provide the manual commands to reset git remotes to official GitHub repositories:',
-      '```bash',
-      '# Reset brew core repository',
-      'git -C "$(brew --repo)" remote set-url origin https://github.com/Homebrew/brew',
-      '',
-      '# Reset core formulae repository',
-      'git -C "$(brew --repo)/Library/Taps/homebrew/homebrew-core" remote set-url origin https://github.com/Homebrew/homebrew-core',
-      '',
-      '# Reset cask repository (if installed)',
-      'if [ -d "$(brew --repo)/Library/Taps/homebrew/homebrew-cask" ]; then',
-      '  git -C "$(brew --repo)/Library/Taps/homebrew/homebrew-cask" remote set-url origin https://github.com/Homebrew/homebrew-cask',
-      'fi',
-      '',
-      '# Unset mirror environment variables in their shell profiles',
-      '# Advise the user to open ~/.zshrc or ~/.bash_profile, and remove lines containing:',
-      '# HOMEBREW_BOTTLE_DOMAIN or HOMEBREW_API_DOMAIN',
-      '```',
-      'Remind them to run `brew update` to pull the latest changes from official GitHub.',
-    ].join('\n');
-  }
+// Commands quoted in a diagnostic report are evidence, not a new user request.
+export function diagnosticRequestText(message: string): string {
+  return message.split(/^\s*(?:```|\[|#{1,6}\s|(?:\*\*)?(?:Warning|Error):|(?:export\s+)?HOMEBREW_[A-Z_]+\s*[:=]|ORIGIN\s*[:=])/m)[0];
+}
 
-  return '';
+export function hasExplicitMirrorProbeRequest(message: string): boolean {
+  const request = message.replace(/(?:不要|不用|无需|别|不必).{0,8}(?:测速|探测|检测|诊断|测试)/g, '')
+    .replace(/(?:do not|don't|no need to)\s+(?:probe|test|diagnose|check|benchmark)\s+(?:the\s+)?(?:mirrors?|network)/gi, '');
+  return /测速|(?:在线|云端|沙盒).{0,12}(?:检测|诊断|探测|测试)|(?:检测|诊断|探测|测试|测一下|测一测).{0,12}(?:镜像|网络|源)|(?:镜像|网络).{0,12}(?:检测|诊断|探测|测试)|(?:probe|test|diagnose|check|benchmark).{0,30}(?:mirrors?|network)|(?:online|cloud).{0,20}(?:probe|diagnostic|test)/i.test(request);
 }

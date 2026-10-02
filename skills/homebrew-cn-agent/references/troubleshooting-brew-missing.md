@@ -23,6 +23,8 @@ echo "$PATH"
 
 Generate persistent repair commands only after the target prefix and shell profile are clear.
 
+Keep PATH repair separate from mirror configuration. `brew.env` contains mirror `NAME=value` settings, not `eval` or `brew shellenv` commands. If the CLI works but BrewUI fails or downloads slowly, follow `desktop-setup.md` instead of appending more PATH or mirror exports to shell profiles.
+
 ## Default Prefixes
 
 - macOS Apple Silicon: `/opt/homebrew`; shell injection is `eval "$(/opt/homebrew/bin/brew shellenv)"`.

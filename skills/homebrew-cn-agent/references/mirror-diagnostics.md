@@ -2,6 +2,8 @@
 
 Use `mirror_probe_deep` for live mirror diagnostics.
 
+For desktop-only slowness or different behavior between Terminal and BrewUI, follow `desktop-setup.md` first unless the user explicitly requests a mirror/network probe. This tool runs from an EdgeOne node or sandbox, not the user's Mac; it currently tests Git repository access, not the full API, bottle, or Cask download chain.
+
 ## Targets
 
 - `Official (官方源)`: `https://github.com/Homebrew/brew.git`
@@ -26,5 +28,6 @@ Use `mirror_probe_deep` for live mirror diagnostics.
 - Prefer a reachable non-official mirror confirmed synchronized, then compare latency. If none is confirmed synchronized, present a reachable candidate with its uncertainty instead of telling the user it is synchronized or immediately recommending a switch.
 - Mention elapsed time, best mirror, approximate latency, and sync status.
 - When recommending an installer command, use the project website command: `/bin/zsh -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)"`.
+- For an already installed Homebrew, append ` -- --configure` to configure shared `brew.env` mirror settings without reinstalling. Keep the user's local network and configuration uncertainty explicit.
 - If recommending a specific mirror, tell the user which interactive mirror option to select in that script: USTC = `1`, Aliyun = `2`, TUNA = `3`, Tencent Cloud = hidden option `5`; do not recommend the official source when non-official mirrors are reachable.
 - Keep the full JSON report in the tool result rather than expanding every field in prose.
