@@ -31,7 +31,10 @@ printf 'brew %s\\n' "$*" >> "$TEST_LOG"
 case "$1" in
   --prefix) printf '%s\\n' "$TEST_PREFIX" ;;
   --repo) printf '%s\\n' "$TEST_PREFIX" ;;
-  --version) echo 'Homebrew 7.0.0'; exit "\${TEST_VERSION_STATUS:-0}" ;;
+  --version)
+    printf '%s\\n' "\${TEST_VERSION_OUTPUT-Homebrew 7.0.0}"
+    if [[ -n "\${TEST_VERSION_ERROR:-}" ]]; then printf '%s\\n' "$TEST_VERSION_ERROR" >&2; fi
+    exit "\${TEST_VERSION_STATUS:-0}" ;;
   update) echo 'mock update diagnostic' >&2; exit "\${TEST_UPDATE_STATUS:-0}" ;;
   *) echo "unexpected brew operation: $*" >&2; exit 90 ;;
 esac
@@ -51,7 +54,8 @@ fi
 exit 0
 `, true);
   put(join(mockBin, 'sw_vers'), '#!/bin/bash\nprintf "%s\\n" "${TEST_MACOS:-26.0}"\n', true);
-  put(join(mockBin, 'sudo'), '#!/bin/bash\necho "unexpected sudo" >&2\nexit 90\n', true);
+  put(join(mockBin, 'id'), '#!/bin/bash\nif [[ "$1" == -u ]]; then printf "%s\\n" "${TEST_UID:-501}"; else /usr/bin/id "$@"; fi\n', true);
+  put(join(mockBin, 'sudo'), '#!/bin/bash\nprintf "sudo %s\\n" "$*" >> "$TEST_LOG"\necho "unexpected sudo" >&2\nexit 90\n', true);
   const env = {
     PATH: `${mockBin}:/usr/bin:/bin:/usr/sbin:/sbin`,
     HOME: home,
@@ -93,6 +97,41 @@ for (const shell of shells) {
     const result = f.run('echo sourced');
     ok(result);
     assert.equal(result.stdout.trim(), 'sourced');
+  });
+
+  test(`${label}: root cannot install, configure or uninstall, but can read help`, (t) => {
+    const f = fixture(t, shell);
+    const profile = join(f.home, '.zshrc');
+    const envFile = join(f.prefix, 'etc/homebrew/brew.env');
+    const profileContents = 'export EDITOR=vim\n';
+    const envContents = 'HOMEBREW_API_DOMAIN=https://old.example/api\n';
+    f.put(profile, profileContents);
+    f.put(envFile, envContents);
+    const homeFiles = readdirSync(f.home);
+    const configFiles = readdirSync(join(f.prefix, 'etc/homebrew'));
+    for (const args of ['', '--configure', '--uninstall', '-u']) {
+      const result = f.run(`
+detect_os() { echo 'unexpected OS detection' >&2; return 90; }
+find_existing_homebrew() { echo 'unexpected brew discovery' >&2; return 90; }
+main ${args}
+`, { TEST_UID: '0' });
+      assert.equal(result.status, 1, result.stdout + result.stderr);
+      assert.match(result.stdout, /root/);
+      assert.match(result.stdout, /普通用户/);
+      assert.doesNotMatch(result.stdout, /安装验证通过|安装\/配置完成/);
+      assert.doesNotMatch(result.stderr, /unexpected/);
+      assert.equal(f.calls(), '');
+      assert.equal(f.contents(profile), profileContents);
+      assert.equal(f.contents(envFile), envContents);
+      assert.deepEqual(readdirSync(f.home), homeFiles);
+      assert.deepEqual(readdirSync(join(f.prefix, 'etc/homebrew')), configFiles);
+    }
+    for (const args of [[installer, '--help'], ['-c', installerSource, '--', '--help']]) {
+      const result = spawnSync(shell, args, { cwd: f.root, env: { ...f.env, TEST_UID: '0' }, encoding: 'utf8', timeout: 10_000 });
+      ok(result);
+      assert.match(result.stdout, /--configure/);
+    }
+    assert.equal(f.calls(), '');
   });
 
   test(`${label}: configure migrates shell and user/XDG env without losing unrelated settings; repeat is idempotent`, (t) => {
@@ -261,11 +300,87 @@ install_homebrew arm64 macos
 
   test(`${label}: version validation gates success even after update succeeds`, (t) => {
     const f = fixture(t, shell);
-    const result = f.run('update_and_verify "$TEST_PREFIX"', { TEST_VERSION_STATUS: '18' });
+    const result = f.run('update_and_verify "$TEST_PREFIX"', { TEST_VERSION_STATUS: '18', TEST_VERSION_ERROR: 'mock version diagnostic' });
     assert.equal(result.status, 1);
     assert.match(result.stdout, /验证失败/);
+    assert.match(result.stdout + result.stderr, /mock version diagnostic/);
     assert.doesNotMatch(result.stdout, /安装验证通过/);
     ok(f.run('update_and_verify "$TEST_PREFIX"'));
+  });
+
+  test(`${label}: fresh install accepts V7, development versions and future major versions and records the actual version`, (t) => {
+    const f = fixture(t, shell);
+    for (const version of ['7.0.0', '7.0.0-123-gabc', '8.1.2']) {
+      const result = f.run(`verify_brew "$TEST_PREFIX" new
+printf 'DETECTED_VERSION=%s\\n' "$HOMEBREW_DETECTED_VERSION"
+MIRROR_NAME=USTC; show_finish_info "$TEST_PREFIX" macos
+`, { TEST_VERSION_OUTPUT: `Homebrew ${version}\nHomebrew/homebrew-core (git revision abc; last commit 2026-10-01)` });
+      ok(result);
+      assert.ok(result.stdout.includes(`DETECTED_VERSION=${version}`), result.stdout);
+      assert.ok(result.stdout.includes(`Homebrew ${version}`), result.stdout);
+      assert.match(result.stdout, /安装\/配置完成/);
+      const summary = result.stdout.slice(result.stdout.indexOf('安装/配置完成'));
+      assert.ok(summary.includes(version), summary);
+    }
+  });
+
+  test(`${label}: fresh install rejects old or unrecognizable versions after update without removing configuration`, (t) => {
+    const f = fixture(t, shell);
+    const envFile = join(f.prefix, 'etc/homebrew/brew.env');
+    const config = 'HOMEBREW_API_DOMAIN=https://mirror.example/api\n';
+    f.put(envFile, config);
+    for (const versionOutput of ['Homebrew 6.4.2', '', 'not a Homebrew version']) {
+      const result = f.run(`update_and_verify "$TEST_PREFIX"
+MIRROR_NAME=USTC; show_finish_info "$TEST_PREFIX" macos
+`, { TEST_VERSION_OUTPUT: versionOutput });
+      assert.equal(result.status, 1, result.stdout + result.stderr);
+      assert.doesNotMatch(result.stdout, /安装验证通过|安装\/配置完成/);
+      assert.match(result.stdout, /同步/);
+      assert.match(result.stdout, /brew update/);
+      assert.match(result.stdout, /换源|更换.*镜像|切换.*镜像/);
+      assert.equal(f.contents(envFile), config);
+    }
+  });
+
+  test(`${label}: configuring older Homebrew reports its version without upgrading it`, (t) => {
+    const f = fixture(t, shell);
+    const result = f.run("main --configure <<<'1'", { TEST_VERSION_OUTPUT: 'Homebrew 6.4.2' });
+    ok(result);
+    assert.match(result.stdout, /Homebrew 6\.4\.2/);
+    assert.match(result.stdout, /未更新或升级已有 Homebrew/);
+    assert.match(result.stdout, /brew update/);
+    assert.doesNotMatch(f.calls(), /brew update|git .*fetch|checkout|reset/);
+    const summary = result.stdout.slice(result.stdout.indexOf('安装/配置完成'));
+    assert.match(summary, /6\.4\.2/);
+  });
+
+  test(`${label}: configuring macOS 10 keeps the final update advice conditional on system compatibility`, (t) => {
+    const f = fixture(t, shell);
+    const result = f.run("main --configure <<<'1'", { TEST_MACOS: '10.15.7', TEST_VERSION_OUTPUT: 'Homebrew 6.4.2' });
+    ok(result);
+    assert.match(result.stdout, /无法运行 Homebrew 7/);
+    assert.match(result.stdout, /请先升级系统/);
+    const summary = result.stdout.slice(result.stdout.indexOf('安装/配置完成'));
+    assert.match(summary, /确认系统符合上方兼容要求.*brew update/);
+    assert.doesNotMatch(summary, /重新打开终端后运行/);
+    assert.doesNotMatch(f.calls(), /brew update|git .*fetch|checkout|reset/);
+  });
+
+  test(`${label}: an unrecognizable existing version warns and clears stale detected versions without upgrading`, (t) => {
+    const f = fixture(t, shell);
+    for (const versionOutput of ['', 'unknown output']) {
+      const result = f.run(`HOMEBREW_DETECTED_VERSION=7.0.0
+main --configure <<<'1'
+printf 'DETECTED_VERSION=<%s>\\n' "$HOMEBREW_DETECTED_VERSION"
+`, { TEST_VERSION_OUTPUT: versionOutput });
+      ok(result);
+      assert.match(result.stdout, /未能识别/);
+      assert.match(result.stdout, /DETECTED_VERSION=<>/);
+      assert.match(result.stdout, /未更新或升级已有 Homebrew/);
+      const summary = result.stdout.slice(result.stdout.indexOf('安装/配置完成'));
+      assert.match(summary, /未能识别/);
+    }
+    assert.doesNotMatch(f.calls(), /brew update|git .*fetch|checkout|reset/);
   });
 
   test(`${label}: macOS eligibility gates new installs and GUI guidance`, (t) => {
@@ -283,6 +398,35 @@ install_homebrew arm64 macos
     result = f.run('MIRROR_NAME=USTC; show_finish_info "$TEST_PREFIX" macos', { TEST_MACOS: '15.0' });
     ok(result);
     assert.doesNotMatch(result.stdout, /brew install --cask homebrew-app/);
+  });
+
+  test(`${label}: macOS 11 through 14 warn about installation impact for both new and existing installations`, (t) => {
+    const f = fixture(t, shell);
+    for (const version of ['11.0', '14.7.1']) {
+      for (const mode of ['new', 'existing']) {
+        const result = f.run(`check_macos_support macos arm64 ${mode}`, { TEST_MACOS: version });
+        ok(result);
+        assert.match(result.stdout, /安装.*升级.*可能失败/);
+        assert.match(result.stdout, /macOS 15/);
+        assert.match(result.stdout, /当前系统请继续使用命令行/);
+      }
+    }
+  });
+
+  test(`${label}: existing macOS 10 warns that V7 needs a system upgrade while supported Apple Silicon stays clear`, (t) => {
+    const f = fixture(t, shell);
+    const old = f.run('check_macos_support macos x86_64 existing', { TEST_MACOS: '10.15.7' });
+    ok(old);
+    assert.match(old.stdout, /无法运行 Homebrew 7|不能运行 Homebrew 7|不支持.*Homebrew 7|Homebrew 7.*不支持/);
+    assert.match(old.stdout, /升级.*系统|系统.*升级/);
+    assert.match(old.stdout, /Tier 3/);
+    const supported = f.run('check_macos_support macos arm64 new', { TEST_MACOS: '15.0' });
+    ok(supported);
+    assert.doesNotMatch(supported.stdout, /Tier 3|不支持|可能失败|先升级/);
+    assert.match(supported.stdout, /当前系统请继续使用命令行/);
+    const linux = f.run('check_macos_support linux x86_64 new', { TEST_MACOS: '10.15.7' });
+    ok(linux);
+    assert.equal(linux.stdout, '');
   });
 
   test(`${label}: uninstall configuration cleanup preserves unrelated variables and backs up prefix env outside prefix`, (t) => {

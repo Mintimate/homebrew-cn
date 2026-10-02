@@ -109,6 +109,15 @@ get_homebrew_prefix() {
 
 # ========== 前置检查 ==========
 
+# 在任何安装、换源或卸载操作前检查，避免写出属于 root 的文件。
+check_not_root() {
+    local current_uid
+    current_uid="$(id -u)" || abort "无法确认当前用户身份，尚未修改任何文件。"
+    if [[ "$current_uid" == "0" ]]; then
+        abort "不能以 root 用户运行本脚本，否则可能导致 Homebrew 文件权限异常，影响安装和更新软件。尚未修改任何文件。请退出 root 会话，使用管理 Homebrew 的普通用户重新运行，不要在安装命令前加 sudo；需要管理员权限时脚本会单独提示。"
+    fi
+}
+
 # 检测 Xcode Command Line Tools 是否已安装
 check_xcode_clt() {
     xcode-select -p &>/dev/null
@@ -150,13 +159,6 @@ wait_for_xcode_clt() {
 preflight_check() {
     local os="$1"
     info "正在进行安装前置检查..."
-
-    # 检查是否以 root 运行（不推荐）
-    if [[ "$EUID" -eq 0 ]]; then
-        warn "检测到以 root 用户运行，Homebrew 不推荐以 root 安装。"
-        warn "如果你确定要继续，请按 Enter 键；否则按 Ctrl+C 退出。"
-        read -r
-    fi
 
     if [[ "$os" == "macos" ]]; then
         # 检查 Xcode Command Line Tools（macOS 上 git/curl 等都依赖它）
@@ -459,8 +461,13 @@ check_macos_support() {
     version="$(sw_vers -productVersion)"
     major="${version%%.*}"
     info "macOS 版本: $version"
-    if [[ "$mode" == "new" && "$major" -le 10 ]]; then
-        abort "Homebrew 7 已不支持 macOS 10.15 及更早版本的新安装。请先升级系统；本脚本不会继续安装。"
+    if [[ "$major" -le 10 ]]; then
+        if [[ "$mode" == "new" ]]; then
+            abort "Homebrew 7 已不支持 macOS 10.15 及更早版本的新安装，无法在当前系统运行。请先升级系统；本脚本不会继续安装。"
+        fi
+        warn "当前系统无法运行 Homebrew 7；本次只配置镜像，不升级 Homebrew。请先升级系统，再运行 brew update，避免升级后无法安装或管理软件。"
+    elif [[ "$major" -lt 15 ]]; then
+        warn "macOS $version 已不在 Homebrew 7 的官方支持范围内：Homebrew 可能仍能运行，但安装或升级软件可能失败，部分软件需要自行编译。建议先升级至 macOS 15 或更新版本；继续操作时脚本不会阻止安装或配置。"
     fi
     if [[ "$arch" == "x86_64" ]]; then
         warn "Intel Mac 在 Homebrew 7 中属于 Tier 3：部分软件可能需要自行编译，兼容性与官方支持有限。"
@@ -485,9 +492,31 @@ run_brew_clean() {
 }
 
 verify_brew() {
-    local prefix="$1"
-    if ! run_brew_clean "$prefix/bin/brew" --version; then
+    local prefix="$1" mode="${2:-existing}" version_output major
+    HOMEBREW_DETECTED_VERSION=""
+    if ! version_output="$(run_brew_clean "$prefix/bin/brew" --version)"; then
+        printf '%s\n' "$version_output"
         abort "Homebrew 验证失败，安装/配置尚未完成。请运行 \"$prefix/bin/brew\" --version 检查错误后重试。"
+    fi
+    printf '%s\n' "$version_output"
+    # 兼容稳定版及 Git 开发版本后缀；不将仅包含 SHA 等未知输出当成版本。
+    HOMEBREW_DETECTED_VERSION="$(printf '%s\n' "$version_output" | awk '
+        NR == 1 && $1 == "Homebrew" && $2 ~ /^[0-9]+\.[0-9]+\.[0-9]+([-+][[:alnum:].+-]+)?$/ { print $2 }
+    ')"
+    if [[ -z "$HOMEBREW_DETECTED_VERSION" ]]; then
+        if [[ "$mode" == "new" ]]; then
+            abort "Homebrew 可以运行，但无法确认实际版本，安装尚未完成验证。已写入的文件和配置会保留。请运行 \"$prefix/bin/brew\" --version 检查输出，并重新打开终端运行 brew update 后重试；所选源可能尚未同步，也可通过 --configure 更换镜像源。"
+        fi
+        warn "无法识别当前 Homebrew 版本；本次仅完成配置，不能据此确认已升级到 Homebrew 7。请运行 brew --version 检查实际版本。"
+        return 0
+    fi
+    info "实际 Homebrew 版本: $HOMEBREW_DETECTED_VERSION"
+    major="${HOMEBREW_DETECTED_VERSION%%.*}"
+    if [[ "$major" -lt 7 ]]; then
+        if [[ "$mode" == "new" ]]; then
+            abort "当前安装的是 Homebrew $HOMEBREW_DETECTED_VERSION，尚未达到 Homebrew 7，安装尚未完成验证。所选源可能尚未同步更新；已写入的文件和配置会保留。请重新打开终端后运行 brew update，或通过 --configure 更换镜像源后再更新，并用 brew --version 确认版本。"
+        fi
+        warn "当前仍是 Homebrew $HOMEBREW_DETECTED_VERSION；换源不会自动升级。需要升级到 Homebrew 7 时，请先确认系统兼容，再运行 brew update。"
     fi
 }
 
@@ -497,7 +526,7 @@ update_and_verify() {
     if ! run_brew_clean "$prefix/bin/brew" update --force; then
         abort "Homebrew 核心文件和配置已写入，但 brew update 失败，安装尚未完成。请检查上方错误，再运行 \"$prefix/bin/brew\" update；成功后运行 brew --version 和 brew doctor 验证。"
     fi
-    verify_brew "$prefix"
+    verify_brew "$prefix" new
     success "Homebrew 安装验证通过！"
 }
 
@@ -797,6 +826,7 @@ show_finish_info() {
     echo -e "${BOLD}${GREEN}       Homebrew 安装/配置完成！🍺          ${NC}"
     echo -e "${BOLD}${GREEN}============================================${NC}"
     echo ""
+    echo -e "  ${BOLD}实际版本:${NC}    ${HOMEBREW_DETECTED_VERSION:-未能识别，请运行 brew --version 确认}"
     echo -e "  ${BOLD}安装路径:${NC}    $prefix"
     echo -e "  ${BOLD}镜像源:${NC}      $MIRROR_NAME"
     echo -e "  ${BOLD}镜像配置:${NC}    $prefix/etc/homebrew/brew.env"
@@ -852,7 +882,7 @@ show_finish_info() {
         echo -e "${BOLD}切换回官方源:${NC}"
         echo -e "  重新运行本脚本并添加 ${CYAN}--configure${NC}，选择 ${CYAN}4) 官方源${NC}。"
         echo "  脚本会备份并清理镜像键、恢复已有 core/cask tap 的官方源，保留其他配置。"
-        echo -e "  重新打开终端后运行 ${CYAN}brew update${NC}。"
+        echo -e "  确认系统符合上方兼容要求后，重新打开终端运行 ${CYAN}brew update${NC}。"
         echo ""
     fi
 }
@@ -1047,6 +1077,7 @@ main() {
         *) abort "未知参数: $1。使用 --help 查看用法。" ;;
     esac
     [[ $# -le 1 ]] || abort "一次只能指定一个操作。"
+    check_not_root
     os="$(detect_os)"
     arch="$(detect_arch)"
     info "检测到系统: ${BOLD}$os${NC} (${arch})"
@@ -1074,7 +1105,7 @@ main() {
         configure_shell_env "$arch" "$prefix" "$os"
         verify_brew "$prefix"
         success "镜像配置完成；未更新或升级已有 Homebrew。"
-        info "重新打开终端后运行 brew update，验证所选源的实际更新。"
+        info "需要更新 Homebrew 时，请先确认系统符合上方兼容要求，再重新打开终端运行 brew update。"
     else
         if [[ "$mode" == "configure" ]]; then
             abort "未找到已有 Homebrew。--configure 只负责配置，不会安装；请先运行不带参数的安装命令。"

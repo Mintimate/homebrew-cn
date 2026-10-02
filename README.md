@@ -30,7 +30,11 @@ Linux：
 /bin/bash -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)"
 ```
 
-Homebrew 7 不再支持 macOS 10.15 及以下；Intel Mac 已进入 Tier 3，不保证提供新的预编译包。BrewUI 需要 macOS 26 或更高版本，不能把命令行 Homebrew 的支持范围等同于桌面端。参见 [Homebrew 7 发布说明](https://brew.sh/2026/09/13/homebrew-7.0.0/)。
+请使用管理 Homebrew 的普通用户运行，不要在命令前加 `sudo`；安装、换源和卸载均会在任何改动前拒绝 root 运行，需要管理员权限时脚本会单独提示。
+
+Homebrew 7 不再支持 macOS 10.15 及以下，脚本会阻止新安装；macOS 11–14 可能仍能运行，但已不受官方支持，安装或升级软件可能失败，建议先升级至 macOS 15 或更新版本。Intel Mac 已进入 Tier 3，不保证提供新的预编译包。BrewUI 需要 macOS 26 或更高版本，不能把命令行 Homebrew 的支持范围等同于桌面端。参见 [系统要求](https://docs.brew.sh/Installation) 和 [Homebrew 7 发布说明](https://brew.sh/2026/09/13/homebrew-7.0.0/)。
+
+新安装会显示实际版本，只有成功更新且确认版本达到 7.x 或更高才显示安装成功。如果仍是旧版或无法识别版本，脚本会返回失败并保留已写入的文件和配置，提示更新或更换镜像后再次确认。
 
 如果无法访问 GitHub，也可以先将脚本下载到本地后运行：
 
@@ -53,7 +57,7 @@ Linux：
 /bin/bash -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)" -- --configure
 ```
 
-该模式要求本机已经安装 Homebrew；未找到时会退出，不会开始新安装。按提示选择镜像源，脚本备份并迁移旧镜像配置，保留无关设置。如果发现无法安全迁移的配置，会说明冲突位置，处理后可重新运行。
+该模式要求本机已经安装 Homebrew；未找到时会退出，不会开始新安装。按提示选择镜像源，脚本备份并迁移旧镜像配置，保留无关设置。如果发现无法安全迁移的配置，会说明冲突位置，处理后可重新运行。换源允许已有旧版 Homebrew，会显示实际版本或无法识别的提示，不会自动升级；需要升级时，先确认系统兼容，再重新打开终端运行 `brew update`。
 
 ### 使用官方桌面端 BrewUI
 
