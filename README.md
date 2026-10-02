@@ -1,25 +1,36 @@
-# 🍺 Homebrew 镜像一键安装脚本
+# 🍺 Homebrew CN 安装与镜像配置
 
-> 使用镜像源快速安装 Homebrew 的一键脚本，内置清华 TUNA / 中科大 USTC / 阿里云等镜像源，并提供 homebrew-cn Agent 辅助排查安装、镜像源、软件包和本地环境问题。
+> 面向国内用户的 Homebrew 安装、镜像配置与中文排障入口。支持 macOS / Linux，并通过 Homebrew 自身的 `brew.env` 配置兼容官方桌面端 BrewUI。
 
 ## ✨ 功能特性
 
 - 🪞 **镜像源可选** — 支持中科大 USTC、阿里云 Aliyun、清华 TUNA、官方源四选一
-- 🖥️ **macOS 全架构** — 兼容 Intel (x86_64) 和 Apple Silicon (M1/M2/M3/M4)
+- 🖥️ **平台检查** — 区分 Apple Silicon、Intel 与 Linux；提示 Homebrew 7 的系统支持限制
 - 🐚 **多 Shell 支持** — 自动适配 Zsh（默认）/ Bash，写入对应配置文件
 - 🔍 **智能检测** — 自动检测系统架构、前置依赖（git、curl 等）
-- 🔄 **已安装适配** — 已有 Homebrew 时可仅重新配置镜像源
+- 🔄 **已有安装换源** — `--configure` 只配置已有 Homebrew，不重复走完整安装前置检查
+- 🪟 **桌面端配置** — 镜像写入安装前缀下的 `etc/homebrew/brew.env`，供终端和 BrewUI 使用
 - 🗑️ **一键卸载** — 内置完整卸载功能，自动清理软件包、目录和环境变量
 - 💾 **自动备份** — 修改 Shell 配置文件前自动创建备份
-- 🤖 **AI Agent 辅助** — 支持 Homebrew 安装问答、在线镜像检测、软件包查询和本地环境诊断
+- 🤖 **AI Agent 辅助** — 支持安装问答、云端镜像检测、软件包查询和用户提供的本地环境信息分析
 
 ## 🚀 快速开始
 
-### 方式一：在线一键安装（推荐）
+### 首次安装 Homebrew
+
+macOS：
 
 ```zsh
 /bin/zsh -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)"
 ```
+
+Linux：
+
+```bash
+/bin/bash -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)"
+```
+
+Homebrew 7 不再支持 macOS 10.15 及以下；Intel Mac 已进入 Tier 3，不保证提供新的预编译包。BrewUI 需要 macOS 26 或更高版本，不能把命令行 Homebrew 的支持范围等同于桌面端。参见 [Homebrew 7 发布说明](https://brew.sh/2026/09/13/homebrew-7.0.0/)。
 
 如果无法访问 GitHub，也可以先将脚本下载到本地后运行：
 
@@ -28,7 +39,33 @@ curl -fsSL -o install.sh https://brew-cn.mintimate.cn/install
 /bin/zsh install.sh
 ```
 
-### 方式二：克隆仓库后运行
+### 已有 Homebrew，仅配置镜像
+
+macOS：
+
+```zsh
+/bin/zsh -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)" -- --configure
+```
+
+Linux：
+
+```bash
+/bin/bash -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)" -- --configure
+```
+
+该模式要求本机已经安装 Homebrew；未找到时会退出，不会开始新安装。按提示选择镜像源，脚本备份并迁移旧镜像配置，保留无关设置。如果发现无法安全迁移的配置，会说明冲突位置，处理后可重新运行。
+
+### 使用官方桌面端 BrewUI
+
+在 macOS 26 或更高版本上，先完成 Homebrew 安装和镜像配置，再运行：
+
+```zsh
+brew install --cask homebrew-app
+```
+
+修改镜像配置后，完全退出并重新打开 BrewUI，在 Configuration 中核对实际配置。BrewUI 使用独立的 Shell 环境，不读取终端中的 `export` 和别名；单独执行 `source ~/.zshrc` 不会改变桌面端配置。参见 [BrewUI 配置说明](https://github.com/Homebrew/BrewUI/blob/main/ARCHITECTURE.md#homebrew-configuration)。
+
+### 克隆仓库后运行
 
 ```zsh
 git clone https://cnb.cool/Mintimate/tool-forge/homebrew-cn
@@ -77,17 +114,13 @@ cd homebrew-cn
 请输入选项 [1/2/3/4] (默认: 1):
 ```
 
-安装过程中，脚本会自动配置环境变量并下载 Homebrew：
+安装过程中，脚本会配置镜像并下载 Homebrew；旧截图仅用于展示终端操作，配置路径以当前脚本输出为准：
 
 ![安装过程](assets/processingShell.webp)
 
-安装完成后，执行以下命令使配置生效：
+安装或迁移完成后，关闭并重新打开终端，以加载 PATH 并清除旧会话中的镜像变量；BrewUI 用户也需要重启应用：
 
 ![安装完成](assets/finishedShell.webp)
-
-```zsh
-source ~/.zshrc
-```
 
 验证安装：
 
@@ -122,34 +155,35 @@ brew doctor
 | **阿里云** | `mirrors.aliyun.com/homebrew/brew.git` | `mirrors.aliyun.com/homebrew/homebrew-bottles` | `mirrors.aliyun.com/homebrew/homebrew-bottles/api` |
 | **清华 TUNA** | `mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git` | `mirrors.tuna.tsinghua.edu.cn/homebrew-bottles` | `mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api` |
 
-脚本会自动配置以下环境变量：
+镜像配置写入 `$(brew --prefix)/etc/homebrew/brew.env`。该文件使用字面量 `NAME=value`，不要添加 `export`、Shell 变量展开或命令替换：
 
-```bash
-export HOMEBREW_BREW_GIT_REMOTE="..."       # brew 主仓库
-export HOMEBREW_CORE_GIT_REMOTE="..."       # homebrew-core 仓库
-export HOMEBREW_BOTTLE_DOMAIN="..."         # 预编译二进制包下载地址
-export HOMEBREW_API_DOMAIN="..."            # API 地址
-export HOMEBREW_CASK_GIT_REMOTE="..."       # homebrew-cask 仓库
+```dotenv
+HOMEBREW_BREW_GIT_REMOTE=https://mirrors.ustc.edu.cn/brew.git
+HOMEBREW_BOTTLE_DOMAIN=https://mirrors.ustc.edu.cn/homebrew-bottles
+HOMEBREW_API_DOMAIN=https://mirrors.ustc.edu.cn/homebrew-bottles/api
 ```
+
+Shell 配置只负责通过 `brew shellenv` 设置命令搜索路径。用户级 `~/.homebrew/brew.env`、终端使用的 XDG 配置和系统级 `/etc/homebrew/brew.env` 也可能影响最终结果。系统或安装级配置中通过 `HOMEBREW_XDG_CONFIG_HOME` 指定的用户目录也会纳入迁移检查；不能安全解析的路径会在写入前提示处理。
+
+USTC 已停止提供 `homebrew-core.git` / `homebrew-cask.git` 镜像，常规安装使用 API 获取软件包信息，不再设置这两个 Git 镜像地址。Bottles 与 API 镜像可用，不代表所有 Cask 应用的官方下载地址都能加速。在线镜像检测从服务器执行，结果不等于用户本地网络速度。
 
 ## 📍 安装路径
 
 | 架构 | 安装路径 |
 |------|----------|
-| Apple Silicon (M1/M2/M3/M4) | `/opt/homebrew` |
+| Apple Silicon | `/opt/homebrew` |
 | Intel (x86_64) | `/usr/local` |
+| Linux | `/home/linuxbrew/.linuxbrew` |
 
 ## 🔄 切换回官方源
 
-如果之后网络环境改善，想切换回官方源：
-
-1. 编辑 `~/.zshrc`，删除 `# Homebrew 镜像配置` 相关行
-2. 运行以下命令：
+重新运行配置模式，选择 `4`（官方源）：
 
 ```zsh
-git -C "$(brew --repo)" remote set-url origin https://github.com/Homebrew/brew
-brew update-reset
+/bin/zsh -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)" -- --configure
 ```
+
+Linux 使用 `/bin/bash`。脚本会处理受支持的旧配置与 `brew.env` 中的镜像设置；完成后重新打开终端和 BrewUI，避免当前进程继续保留旧环境变量。不要仅删除 `.zshrc` 中的配置，否则 `brew.env` 仍可能继续生效。
 
 ## ❓ 常见问题
 
@@ -159,19 +193,19 @@ A: 请先执行 `source ~/.zshrc` 使环境变量生效，或重新打开终端�
 
 ### Q: `brew update` 时报 Git 相关错误
 
-A: 尝试执行：
-
-```zsh
-brew update-reset
-```
+A: 保留完整错误，先检查镜像连接和分支同步情况。Homebrew 7 使用 `main`，旧的 `master` 为过渡分支。脚本在更新或验证失败时会返回失败状态，不会把该结果显示为安装成功；可更换镜像后重试，或将错误交给 Agent 分析。
 
 ### Q: 想更换镜像源怎么办？
 
-A: 重新运行安装脚本，选择新的镜像源即可。脚本会自动清理旧配置并写入新配置。
+A: 使用 `--configure`，选择新的镜像源即可。旧版本用户也可通过此入口迁移到桌面端可用的 `brew.env` 配置。
+
+### Q: 终端已经换源，BrewUI 还是下载慢
+
+A: 检查是否仍只在 `.zshrc` 中设置镜像。使用配置模式完成迁移后，重启 BrewUI 并查看 Configuration。如果配置一致，再确认下载慢发生在 API、Bottle 还是具体应用的下载地址；云端 Git 镜像检测不能覆盖所有这些环节。
 
 ### Q: macOS 提示需要安装 Xcode Command Line Tools
 
-A: 脚本会自动触发安装，请在弹出的对话框中点击"安装"，安装完成后重新运行脚本。
+A: 首次安装使用 CLI 路线，脚本会触发安装并等待完成；超时后可安装好 CLT 再重试。已有 Homebrew 的 `--configure` 模式不会重复执行完整前置安装检查。
 
 ### Q: 如何卸载 Homebrew？
 
@@ -276,6 +310,8 @@ curl -c /tmp/homebrew-cn-cookie.txt \
 ## 🔗 参考链接
 
 - [Homebrew 官方安装文档](https://docs.brew.sh/Installation)
+- [Homebrew 7 发布说明](https://brew.sh/2026/09/13/homebrew-7.0.0/)
+- [BrewUI 配置说明](https://github.com/Homebrew/BrewUI/blob/main/ARCHITECTURE.md#homebrew-configuration)
 - [清华 TUNA Homebrew 镜像帮助](https://mirrors.tuna.tsinghua.edu.cn/help/homebrew/)
 - [中科大 USTC Homebrew 镜像帮助](https://mirrors.ustc.edu.cn/help/brew.git.html)
 - [Homebrew 官网](https://brew.sh/)

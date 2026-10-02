@@ -48,21 +48,19 @@ get_shell_profile() {
     shell_name="$(basename "$SHELL")"
     case "$shell_name" in
         zsh)
-            if [[ "$OSTYPE" == "linux-gnu"* ]]; then
-                echo "$HOME/.zshrc"
-            elif [[ -f "$HOME/.zshrc" ]]; then
-                echo "$HOME/.zshrc"
-            else
-                echo "$HOME/.zshrc"
-            fi
+            echo "${ZDOTDIR:-$HOME}/.zshrc"
             ;;
         bash)
             if [[ "$OSTYPE" == "linux-gnu"* ]]; then
                 echo "$HOME/.bashrc"
             elif [[ -f "$HOME/.bash_profile" ]]; then
                 echo "$HOME/.bash_profile"
+            elif [[ -f "$HOME/.bash_login" ]]; then
+                echo "$HOME/.bash_login"
+            elif [[ -f "$HOME/.profile" ]]; then
+                echo "$HOME/.profile"
             else
-                echo "$HOME/.bashrc"
+                echo "$HOME/.bash_profile"
             fi
             ;;
         *)
@@ -264,46 +262,46 @@ select_mirror() {
         2)
             MIRROR_NAME="Aliyun"
             BREW_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/brew.git"
-            HOMEBREW_CORE_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/homebrew-core.git"
-            HOMEBREW_BOTTLE_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bottles"
-            HOMEBREW_API_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bottles/api"
-            HOMEBREW_CASK_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/homebrew-cask.git"
+            MIRROR_CORE_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/homebrew-core.git"
+            MIRROR_BOTTLE_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bottles"
+            MIRROR_API_DOMAIN="https://mirrors.aliyun.com/homebrew/homebrew-bottles/api"
+            MIRROR_CASK_GIT_REMOTE="https://mirrors.aliyun.com/homebrew/homebrew-cask.git"
             ;;
         3)
             MIRROR_NAME="TUNA"
             BREW_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/brew.git"
-            HOMEBREW_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
-            HOMEBREW_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
-            HOMEBREW_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
-            HOMEBREW_CASK_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-cask.git"
+            MIRROR_CORE_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-core.git"
+            MIRROR_BOTTLE_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles"
+            MIRROR_API_DOMAIN="https://mirrors.tuna.tsinghua.edu.cn/homebrew-bottles/api"
+            MIRROR_CASK_GIT_REMOTE="https://mirrors.tuna.tsinghua.edu.cn/git/homebrew/homebrew-cask.git"
             ;;
         4)
             MIRROR_NAME="官方源"
             BREW_GIT_REMOTE="https://github.com/Homebrew/brew"
-            HOMEBREW_CORE_GIT_REMOTE="https://github.com/Homebrew/homebrew-core"
-            HOMEBREW_BOTTLE_DOMAIN=""
-            HOMEBREW_API_DOMAIN=""
-            HOMEBREW_CASK_GIT_REMOTE=""
+            MIRROR_CORE_GIT_REMOTE="https://github.com/Homebrew/homebrew-core"
+            MIRROR_BOTTLE_DOMAIN=""
+            MIRROR_API_DOMAIN=""
+            MIRROR_CASK_GIT_REMOTE="https://github.com/Homebrew/homebrew-cask"
             ;;
         5)
             # 🎉 隐藏彩蛋：腾讯云镜像源
             # 腾讯云使用 dumb HTTP 协议，不支持 shallow clone，因此需要完整克隆
             MIRROR_NAME="Tencent (腾讯云)"
             BREW_GIT_REMOTE="https://mirrors.cloud.tencent.com/homebrew/brew.git"
-            HOMEBREW_CORE_GIT_REMOTE="https://mirrors.cloud.tencent.com/homebrew/homebrew-core.git"
-            HOMEBREW_BOTTLE_DOMAIN="https://mirrors.cloud.tencent.com/homebrew-bottles"
-            HOMEBREW_API_DOMAIN="https://mirrors.cloud.tencent.com/homebrew-bottles/api"
-            HOMEBREW_CASK_GIT_REMOTE="https://mirrors.cloud.tencent.com/homebrew/homebrew-cask.git"
+            MIRROR_CORE_GIT_REMOTE="https://mirrors.cloud.tencent.com/homebrew/homebrew-core.git"
+            MIRROR_BOTTLE_DOMAIN="https://mirrors.cloud.tencent.com/homebrew-bottles"
+            MIRROR_API_DOMAIN="https://mirrors.cloud.tencent.com/homebrew-bottles/api"
+            MIRROR_CASK_GIT_REMOTE="https://mirrors.cloud.tencent.com/homebrew/homebrew-cask.git"
             MIRROR_NO_SHALLOW=true
             ;;
 
         *)
             MIRROR_NAME="USTC"
             BREW_GIT_REMOTE="https://mirrors.ustc.edu.cn/brew.git"
-            HOMEBREW_CORE_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-core.git"
-            HOMEBREW_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"
-            HOMEBREW_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"
-            HOMEBREW_CASK_GIT_REMOTE="https://mirrors.ustc.edu.cn/homebrew-cask.git"
+            MIRROR_CORE_GIT_REMOTE="https://github.com/Homebrew/homebrew-core"
+            MIRROR_BOTTLE_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles"
+            MIRROR_API_DOMAIN="https://mirrors.ustc.edu.cn/homebrew-bottles/api"
+            MIRROR_CASK_GIT_REMOTE="https://github.com/Homebrew/homebrew-cask"
             ;;
     esac
 
@@ -332,22 +330,8 @@ install_homebrew() {
         homebrew_repo="$prefix/Homebrew"
     fi
 
-    # 检查是否已安装
-    if [[ -f "$prefix/bin/brew" ]]; then
-        warn "检测到 Homebrew 已安装在 $prefix"
-        echo -n -e "是否要重新配置镜像源？[${GREEN}Y${NC}/${RED}n${NC}]: "
-        read -r reinstall_choice
-        if [[ "$reinstall_choice" =~ ^[Nn]$ ]]; then
-            info "跳过安装，退出脚本。"
-            exit 0
-        fi
-        info "将为已有的 Homebrew 重新配置镜像源..."
-        configure_mirror "$prefix" "$homebrew_repo"
-        configure_shell_env "$arch" "$prefix" "$os"
-        success "镜像源配置完成！"
-        show_finish_info "$prefix" "$os"
-        return
-    fi
+    # 新安装必须使用仍在更新的 main；冻结的 master 不能作为回退。
+    require_main_branch
 
     info "开始安装 Homebrew..."
     info "安装目录: $prefix"
@@ -415,7 +399,7 @@ install_homebrew() {
         if [[ -d "$homebrew_repo/.git" ]]; then
             info "检测到已有的 git 仓库，更新中... (尝试 $((retry_count+1))/$max_retries)"
             git -C "$homebrew_repo" remote set-url origin "$BREW_GIT_REMOTE"
-            if git -C "$homebrew_repo" fetch --force origin && git -C "$homebrew_repo" reset --hard origin/master; then
+            if git -C "$homebrew_repo" fetch --force origin +refs/heads/main:refs/remotes/origin/main && git -C "$homebrew_repo" checkout --force -B main origin/main; then
                 clone_success=true
                 break
             fi
@@ -429,7 +413,7 @@ install_homebrew() {
             if [[ "$MIRROR_NO_SHALLOW" != true ]]; then
                 fetch_args=(--force --depth=1 origin)
             fi
-            if git -C "$homebrew_repo" fetch "${fetch_args[@]}" && git -C "$homebrew_repo" reset --hard origin/master; then
+            if git -C "$homebrew_repo" fetch "${fetch_args[@]}" +refs/heads/main:refs/remotes/origin/main && git -C "$homebrew_repo" checkout --force -B main origin/main; then
                 clone_success=true
                 break
             fi
@@ -464,112 +448,341 @@ install_homebrew() {
     # 配置 shell 环境变量
     configure_shell_env "$arch" "$prefix" "$os"
 
-    # 立即加载环境变量
-    eval "$("$prefix/bin/brew" shellenv)"
-
-    # 将镜像源环境变量导出到当前 shell 会话（配置文件中的变量需要 source 后才生效，这里提前设置）
-    if [[ "$MIRROR_NAME" != "官方源" ]]; then
-        export HOMEBREW_BREW_GIT_REMOTE="$BREW_GIT_REMOTE"
-        export HOMEBREW_CORE_GIT_REMOTE="$HOMEBREW_CORE_GIT_REMOTE"
-        export HOMEBREW_BOTTLE_DOMAIN="$HOMEBREW_BOTTLE_DOMAIN"
-        export HOMEBREW_API_DOMAIN="$HOMEBREW_API_DOMAIN"
-        [[ -n "$HOMEBREW_CASK_GIT_REMOTE" ]] && export HOMEBREW_CASK_GIT_REMOTE="$HOMEBREW_CASK_GIT_REMOTE"
-    fi
-
-    # 更新
-    info "运行 brew update..."
-    "$prefix/bin/brew" update --force --quiet 2>/dev/null || true
-
-    success "Homebrew 安装成功！"
+    # 保留原始错误输出；核心文件存在不代表安装已经成功。
+    update_and_verify "$prefix"
 }
 
-# ========== 配置镜像源 ==========
-configure_mirror() {
+# ========== V7 兼容性与配置迁移 ==========
+check_macos_support() {
+    local os="$1" arch="$2" mode="${3:-existing}" version major
+    [[ "$os" == "macos" ]] || return 0
+    version="$(sw_vers -productVersion)"
+    major="${version%%.*}"
+    info "macOS 版本: $version"
+    if [[ "$mode" == "new" && "$major" -le 10 ]]; then
+        abort "Homebrew 7 已不支持 macOS 10.15 及更早版本的新安装。请先升级系统；本脚本不会继续安装。"
+    fi
+    if [[ "$arch" == "x86_64" ]]; then
+        warn "Intel Mac 在 Homebrew 7 中属于 Tier 3：部分软件可能需要自行编译，兼容性与官方支持有限。"
+    fi
+    if [[ "$major" -lt 26 ]]; then
+        info "官方 BrewUI 桌面端要求 macOS 26 或更新版本；当前系统请继续使用命令行。"
+    fi
+}
+
+require_main_branch() {
+    info "检查所选源的 Homebrew main 分支..."
+    if ! git ls-remote --exit-code --heads "$BREW_GIT_REMOTE" refs/heads/main >/dev/null; then
+        abort "无法读取 $BREW_GIT_REMOTE 的 main 分支。镜像可能尚未同步 Homebrew 7，或网络连接失败。请重试或选择其他源；不会回退到已冻结的 master。"
+    fi
+}
+
+# 子进程不继承旧 Shell 的镜像键，实际配置由 brew 自己读取 brew.env。
+run_brew_clean() {
+    env -u HOMEBREW_BREW_GIT_REMOTE -u HOMEBREW_CORE_GIT_REMOTE \
+        -u HOMEBREW_CASK_GIT_REMOTE -u HOMEBREW_BOTTLE_DOMAIN \
+        -u HOMEBREW_API_DOMAIN "$@"
+}
+
+verify_brew() {
     local prefix="$1"
-    local homebrew_repo="${2:-$prefix}"
-    local shell_profile
-    shell_profile="$(get_shell_profile)"
-
-    # 先移除旧的 Homebrew 镜像配置
-    if [[ -f "$shell_profile" ]]; then
-        # 创建备份
-        cp "$shell_profile" "${shell_profile}.homebrew_backup.$(date +%Y%m%d%H%M%S)"
-
-        # 移除旧的 Homebrew 镜像相关配置，并清理多余的空行
-        local temp_file
-        temp_file="$(mktemp)"
-        awk '
-        /HOMEBREW_BREW_GIT_REMOTE|HOMEBREW_CORE_GIT_REMOTE|HOMEBREW_BOTTLE_DOMAIN|HOMEBREW_API_DOMAIN|HOMEBREW_CASK_GIT_REMOTE|# Homebrew 镜像/ { next }
-        NF == 0 { blank++ }
-        NF > 0 { blank=0 }
-        blank <= 1 { print }
-        ' "$shell_profile" > "$temp_file" 2>/dev/null || true
-        mv "$temp_file" "$shell_profile"
+    if ! run_brew_clean "$prefix/bin/brew" --version; then
+        abort "Homebrew 验证失败，安装/配置尚未完成。请运行 \"$prefix/bin/brew\" --version 检查错误后重试。"
     fi
-
-    # 设置 brew git remote
-    git -C "$homebrew_repo" remote set-url origin "$BREW_GIT_REMOTE" 2>/dev/null || true
-
-    if [[ "$MIRROR_NAME" == "官方源" ]]; then
-        info "使用官方源，已清理旧的镜像配置。"
-        return
-    fi
-
-    info "配置 ${MIRROR_NAME} 镜像源..."
-
-    # 写入新的镜像配置
-    {
-        echo ""
-        echo "# Homebrew 镜像配置 (${MIRROR_NAME})"
-        echo "export HOMEBREW_BREW_GIT_REMOTE=\"$BREW_GIT_REMOTE\""
-        echo "export HOMEBREW_CORE_GIT_REMOTE=\"$HOMEBREW_CORE_GIT_REMOTE\""
-        echo "export HOMEBREW_BOTTLE_DOMAIN=\"$HOMEBREW_BOTTLE_DOMAIN\""
-        echo "export HOMEBREW_API_DOMAIN=\"$HOMEBREW_API_DOMAIN\""
-        [[ -n "$HOMEBREW_CASK_GIT_REMOTE" ]] && echo "export HOMEBREW_CASK_GIT_REMOTE=\"$HOMEBREW_CASK_GIT_REMOTE\""
-    } >> "$shell_profile"
-
-    success "镜像源环境变量已写入 $shell_profile"
 }
 
-# ========== 配置 Shell 环境 ==========
-configure_shell_env() {
-    local arch="$1"
-    local prefix="$2"
-    local os="${3:-macos}"
-    local shell_profile
-    shell_profile="$(get_shell_profile)"
-
-    # 先移除旧的 Homebrew 环境配置
-    if [[ -f "$shell_profile" ]]; then
-        local temp_file
-        temp_file="$(mktemp)"
-        awk '
-        /brew shellenv|# Homebrew 环境配置/ { next }
-        NF == 0 { blank++ }
-        NF > 0 { blank=0 }
-        blank <= 1 { print }
-        ' "$shell_profile" > "$temp_file" 2>/dev/null || true
-        mv "$temp_file" "$shell_profile"
+update_and_verify() {
+    local prefix="$1"
+    info "运行 brew update..."
+    if ! run_brew_clean "$prefix/bin/brew" update --force; then
+        abort "Homebrew 核心文件和配置已写入，但 brew update 失败，安装尚未完成。请检查上方错误，再运行 \"$prefix/bin/brew\" update；成功后运行 brew --version 和 brew doctor 验证。"
     fi
+    verify_brew "$prefix"
+    success "Homebrew 安装验证通过！"
+}
 
-    info "配置 Homebrew 环境变量到 $shell_profile ..."
+find_existing_homebrew() {
+    local candidate prefix
+    prefix="$(get_homebrew_prefix "$1" "$2")"
+    candidate="$prefix/bin/brew"
+    if [[ ! -x "$candidate" ]]; then
+        candidate="$(command -v brew 2>/dev/null || true)"
+    fi
+    [[ -n "$candidate" && -x "$candidate" ]] || return 1
+    EXISTING_PREFIX="$(run_brew_clean "$candidate" --prefix)" || abort "无法读取已有 Homebrew 的安装路径。"
+    EXISTING_REPOSITORY="$(run_brew_clean "$candidate" --repo)" || abort "无法读取已有 Homebrew 的仓库路径。"
+    [[ "$EXISTING_PREFIX" == /* && "$EXISTING_REPOSITORY" == /* && -x "$EXISTING_PREFIX/bin/brew" ]] || abort "已有 Homebrew 返回了无效路径，无法安全配置。"
+}
 
-    local shell_name
-    shell_name="$(basename "$SHELL")"
-
+# 不执行配置文件。仅迁移独占一行的镜像赋值；复杂 Shell 语句保留并阻止配置。
+filter_mirror_config() {
+    local file="$1" mode="$2" check_extra="${3:-yes}"
+    awk -v mode="$mode" -v check_extra="$check_extra" '
+    BEGIN {
+        keys="HOMEBREW_(BREW_GIT_REMOTE|CORE_GIT_REMOTE|CASK_GIT_REMOTE|BOTTLE_DOMAIN|API_DOMAIN)"
+        extra="HOMEBREW_ARTIFACT_DOMAIN(_NO_FALLBACK)?"
+        sq=sprintf("%c",39)
+    }
+    /^[[:space:]]*# Homebrew 镜像配置([[:space:](]|$)/ { next }
+    /^# (BEGIN|END) homebrew-cn mirror$/ { next }
+    /^[[:space:]]*#/ { print; next }
     {
-        echo ""
-        echo "# Homebrew 环境配置"
-        echo "eval \"\$($prefix/bin/brew shellenv)\""
-    } >> "$shell_profile"
+        if (check_extra == "yes" && $0 ~ extra "[[:space:]]*=") {
+            print "下载地址覆盖配置需要手动检查: " FILENAME ":" FNR > "/dev/stderr"
+            failed=1
+        }
+        if ($0 ~ keys) {
+            if (mode == "env" && $0 ~ "^[[:space:]]*" keys "=") next
+            # 允许单一字面量赋值（包括原脚本生成的 export），禁止分号和多变量语句。
+            line=$0
+            sub(/^[[:space:]]*/, "", line)
+            sub(/^export[[:space:]]+/, "", line)
+            if (line ~ "^" keys "=") {
+                sub(/^[^=]*=/, "", line)
+                sub(/[[:space:]]+#.*$/, "", line)
+                sub(/[[:space:]]*$/, "", line)
+                if (line ~ /^"[^"$`]*"$/ || line ~ "^" sq "[^" sq "]*" sq "$" || line ~ /^[A-Za-z0-9_:\/.@%+?=-]*$/) {
+                    # 保留空操作，防止 if/then、函数等控制流因删空而失去合法语法。
+                    if (mode == "shell") print ": # homebrew-cn mirror configuration removed"
+                    next
+                }
+            }
+            print "无法安全迁移复杂镜像配置: " FILENAME ":" FNR > "/dev/stderr"
+            failed=1
+        }
+        print
+    }
+    END { if (failed) exit 1 }
+    ' "$file"
+}
 
-    success "Homebrew 环境变量已写入 $shell_profile"
+add_user_env_root() {
+    local config_root="$1" origin="$2" candidate existing
+    [[ -n "$config_root" ]] || return 0
+    case "$config_root" in
+        /*) ;;
+        *) abort "$origin 的 Homebrew 用户配置路径不是绝对路径，无法安全迁移。请改为字面量绝对路径后重试；未修改配置。" ;;
+    esac
+    case "$config_root" in
+        *'$'*|*'`'*|*'\'*|*$'\n'*)
+            abort "$origin 的 Homebrew 用户配置路径含未展开的 Shell 表达式或转义，无法安全迁移。brew.env 只支持字面量路径；未修改配置。"
+            ;;
+    esac
+    candidate="${config_root%/}/homebrew/brew.env"
+    for existing in "${USER_ENV_FILES[@]}"; do
+        [[ "$existing" == "$candidate" ]] && return 0
+    done
+    USER_ENV_FILES+=("$candidate")
+}
 
-    # Linux 上额外提示安装 GCC
-    if [[ "$os" == "linux" ]]; then
-        echo ""
-        info "💡 建议在安装完成后运行 ${CYAN}brew install gcc${NC} 以获得最佳体验。"
+collect_env_xdg_file() {
+    local file="$1" config_root
+    [[ -f "$file" ]] || return 0
+    # 与 brew.env 的字面量赋值一致，只读取最后一次赋值，不 source/eval。
+    config_root="$(awk '
+        /^[[:space:]]*HOMEBREW_XDG_CONFIG_HOME=/ {
+            value=$0
+            sub(/^[[:space:]]*HOMEBREW_XDG_CONFIG_HOME=/, "", value)
+            sub(/[[:space:]]*$/, "", value)
+        }
+        END { if (value != "") print value }
+    ' "$file")" || abort "无法读取 $file 的用户配置路径；未修改配置。"
+    add_user_env_root "$config_root" "$file 中 HOMEBREW_XDG_CONFIG_HOME"
+}
+
+collect_config_files() {
+    local prefix="$1"
+    # 数组遍历同时兼容 macOS 自带 Bash 3.2 和公开安装命令使用的 zsh。
+    SHELL_CONFIG_FILES=("$HOME/.zshenv" "$HOME/.zprofile" "$HOME/.zshrc" "$HOME/.zlogin" "$HOME/.bash_profile" "$HOME/.bash_login" "$HOME/.bashrc" "$HOME/.profile")
+    if [[ -n "${ZDOTDIR:-}" && "$ZDOTDIR" != "$HOME" ]]; then
+        SHELL_CONFIG_FILES+=("$ZDOTDIR/.zshenv" "$ZDOTDIR/.zprofile" "$ZDOTDIR/.zshrc" "$ZDOTDIR/.zlogin")
     fi
+    USER_ENV_FILES=("$HOME/.homebrew/brew.env")
+    add_user_env_root "${XDG_CONFIG_HOME:-}" "环境变量 XDG_CONFIG_HOME"
+    add_user_env_root "${HOMEBREW_XDG_CONFIG_HOME:-}" "环境变量 HOMEBREW_XDG_CONFIG_HOME"
+    # brew 先读系统/prefix 配置，再选择用户文件；BrewUI 也会读取这里指定的路径。
+    # 收集所有已知入口，兼顾终端 XDG 与桌面端干净环境，以及恢复官方/卸载清理。
+    collect_env_xdg_file /etc/homebrew/brew.env
+    collect_env_xdg_file "$prefix/etc/homebrew/brew.env"
+}
+
+check_config_conflicts() {
+    local prefix="$1" file
+    # 全局文件不属于本项目管理范围；镜像配置留给管理员处理。
+    if [[ -f /etc/homebrew/brew.env ]] && grep -Eq '^[[:space:]]*HOMEBREW_(BREW_GIT_REMOTE|CORE_GIT_REMOTE|CASK_GIT_REMOTE|BOTTLE_DOMAIN|API_DOMAIN|ARTIFACT_DOMAIN|ARTIFACT_DOMAIN_NO_FALLBACK)=' /etc/homebrew/brew.env; then
+        abort "检测到 /etc/homebrew/brew.env 中的系统级镜像设置。请先由管理员移除或统一这些镜像键，再重新配置；未修改全局文件。"
+    fi
+    if [[ -n "${HOMEBREW_ARTIFACT_DOMAIN:-}" || -n "${HOMEBREW_ARTIFACT_DOMAIN_NO_FALLBACK:-}" ]]; then
+        abort "当前环境设置了 HOMEBREW_ARTIFACT_DOMAIN 或 HOMEBREW_ARTIFACT_DOMAIN_NO_FALLBACK，会影响下载来源。请先检查并清除该覆盖配置后重试。"
+    fi
+    for file in "${SHELL_CONFIG_FILES[@]}"; do
+        [[ -f "$file" ]] || continue
+        filter_mirror_config "$file" shell >/dev/null || abort "请先手动调整上述复杂/下载覆盖配置，再重试；未迁移任何配置。"
+    done
+    for file in "$prefix/etc/homebrew/brew.env" "${USER_ENV_FILES[@]}"; do
+        [[ -f "$file" ]] || continue
+        filter_mirror_config "$file" env >/dev/null || abort "请先检查上述 brew.env 中的下载覆盖配置，再重试；未迁移任何配置。"
+    done
+}
+
+check_config_writable() {
+    local file="$1" directory
+    if [[ -e "$file" || -L "$file" ]]; then
+        [[ -f "$file" && -w "$file" ]] || abort "配置文件不可写或不是普通文件: $file。未开始配置迁移。"
+    fi
+    directory="$(dirname "$file")"
+    while [[ ! -e "$directory" ]]; do directory="$(dirname "$directory")"; done
+    [[ -d "$directory" && -w "$directory" ]] || abort "无法在 $directory 创建配置/备份文件。未开始配置迁移。"
+}
+
+check_migration_writable() {
+    local prefix="$1" file
+    check_config_writable "$prefix/etc/homebrew/brew.env"
+    check_config_writable "$(get_shell_profile)"
+    for file in "${SHELL_CONFIG_FILES[@]}" "${USER_ENV_FILES[@]}"; do
+        [[ -f "$file" ]] || continue
+        if grep -Eq 'HOMEBREW_(BREW_GIT_REMOTE|CORE_GIT_REMOTE|CASK_GIT_REMOTE|BOTTLE_DOMAIN|API_DOMAIN)|# Homebrew 镜像配置|# (BEGIN|END) homebrew-cn mirror' "$file"; then
+            check_config_writable "$file"
+        fi
+    done
+}
+
+# 仅当内容变化时备份，保留文件权限及符号链接目标，不覆盖已有备份。
+save_config_file() {
+    local file="$1" prepared="$2" backup
+    if [[ -f "$file" ]] && cmp -s "$file" "$prepared"; then
+        return 0
+    fi
+    if [[ -e "$file" && ! -f "$file" ]]; then
+        abort "配置路径不是普通文件，未覆盖: $file"
+    fi
+    if [[ -f "$file" ]]; then
+        [[ -w "$file" ]] || abort "配置文件不可写: $file"
+        backup="$(mktemp "${file}.homebrew-cn-backup.XXXXXX")"
+        cp -p "$file" "$backup"
+        info "已备份: $backup"
+    else
+        mkdir -p "$(dirname "$file")"
+    fi
+    cat "$prepared" > "$file"
+}
+
+migrate_mirror_file() {
+    local file="$1" mode="$2" prepared
+    [[ -f "$file" ]] || return 0
+    prepared="$(mktemp)"
+    if ! filter_mirror_config "$file" "$mode" "${3:-yes}" > "$prepared"; then
+        rm -f "$prepared"
+        abort "无法安全迁移配置文件: $file"
+    fi
+    save_config_file "$file" "$prepared"
+    rm -f "$prepared"
+}
+
+configure_mirror() {
+    local prefix="$1" homebrew_repo="$2" file prepared tap_repo
+    collect_config_files "$prefix"
+    check_config_conflicts "$prefix"
+    check_migration_writable "$prefix"
+    # 检测网络与分支后才开始修改；缺少 main 的镜像不能声称 V7 配置成功。
+    require_main_branch
+    git -C "$homebrew_repo" remote set-url origin "$BREW_GIT_REMOTE" || abort "无法更新 Homebrew Git 源，配置未完成。"
+
+    # API 模式不创建 core/cask taps，也不持久化不存在的 CASK_GIT_REMOTE 配置。
+    # 已有 taps 则更新实际 remote；USTC 已停供这两个 Git 镜像，退回官方。
+    for file in core cask; do
+        tap_repo="$homebrew_repo/Library/Taps/homebrew/homebrew-$file"
+        [[ -d "$tap_repo/.git" || -f "$tap_repo/.git" ]] || continue
+        if [[ "$file" == core ]]; then
+            git -C "$tap_repo" remote set-url origin "$MIRROR_CORE_GIT_REMOTE" || abort "无法更新已有 core tap 的源。"
+        else
+            git -C "$tap_repo" remote set-url origin "$MIRROR_CASK_GIT_REMOTE" || abort "无法更新已有 cask tap 的源。"
+        fi
+    done
+    for file in "${SHELL_CONFIG_FILES[@]}"; do migrate_mirror_file "$file" shell; done
+    for file in "${USER_ENV_FILES[@]}"; do migrate_mirror_file "$file" env; done
+
+    file="$prefix/etc/homebrew/brew.env"
+    prepared="$(mktemp)"
+    if [[ -f "$file" ]]; then filter_mirror_config "$file" env > "$prepared"; fi
+    if [[ "$MIRROR_NAME" != "官方源" ]]; then
+        {
+            echo '# BEGIN homebrew-cn mirror'
+            echo "HOMEBREW_BREW_GIT_REMOTE=$BREW_GIT_REMOTE"
+            echo "HOMEBREW_BOTTLE_DOMAIN=$MIRROR_BOTTLE_DOMAIN"
+            echo "HOMEBREW_API_DOMAIN=$MIRROR_API_DOMAIN"
+            if [[ -d "$homebrew_repo/Library/Taps/homebrew/homebrew-core/.git" || -f "$homebrew_repo/Library/Taps/homebrew/homebrew-core/.git" ]]; then
+                echo "HOMEBREW_CORE_GIT_REMOTE=$MIRROR_CORE_GIT_REMOTE"
+            fi
+            echo '# END homebrew-cn mirror'
+        } >> "$prepared"
+    fi
+    save_config_file "$file" "$prepared"
+    rm -f "$prepared"
+    success "镜像配置已保存到 $file（终端与 BrewUI 共用）"
+    info "已迁移用户 brew.env 和常见 Shell 启动文件中的镜像键；其他设置保持原样。请重新打开终端，并重启 BrewUI 后检查 Configuration。"
+}
+
+shellenv_line() {
+    # printf %q 在 Bash 3.2 / zsh 中都可用，避免自定义路径被当作 Shell 代码。
+    printf 'eval "$(%s shellenv)"\n' "$(printf '%q' "$1/bin/brew")"
+}
+
+filter_shellenv_config() {
+    HOMEBREW_CN_TARGET_PREFIX="$2" HOMEBREW_CN_SHELLENV_LINE="$(shellenv_line "$2")" awk '
+    BEGIN { prefix=ENVIRON["HOMEBREW_CN_TARGET_PREFIX"]; desired=ENVIRON["HOMEBREW_CN_SHELLENV_LINE"] }
+    /^# Homebrew 环境配置$/ { managed=1; next }
+    {
+        if (managed && ($0 == desired || $0 == "eval \"$(" prefix "/bin/brew shellenv)\"" || $0 == "eval \"$(\"" prefix "/bin/brew\" shellenv)\"")) { managed=0; next }
+        if (managed) print "# Homebrew 环境配置"
+        managed=0
+        print
+    }
+    END { if (managed) print "# Homebrew 环境配置" }
+    ' "$1"
+}
+
+configure_shell_env() {
+    local arch="$1" prefix="$2" os="${3:-macos}" shell_profile prepared
+    shell_profile="$(get_shell_profile)"
+    prepared="$(mktemp)"
+    if [[ -f "$shell_profile" ]]; then
+        # 仅替换本脚本生成的两行；保留用户其他包含 shellenv 的脚本逻辑。
+        filter_shellenv_config "$shell_profile" "$prefix" > "$prepared"
+    fi
+    {
+        echo '# Homebrew 环境配置'
+        shellenv_line "$prefix"
+    } >> "$prepared"
+    save_config_file "$shell_profile" "$prepared"
+    rm -f "$prepared"
+    success "Homebrew PATH 配置已写入 $shell_profile"
+}
+
+cleanup_homebrew_config() {
+    local prefix="$1" file prepared filtered backup
+    collect_config_files "$prefix"
+    # 在卸载软件之前检查，以免留下半卸载状态。
+    for file in "${SHELL_CONFIG_FILES[@]}"; do
+        [[ -f "$file" ]] || continue
+        filter_mirror_config "$file" shell no >/dev/null || abort "请先手动整理上述复杂镜像配置，再卸载。"
+    done
+    # prefix 可能随卸载删除，备份放在用户目录以便保留无关配置。
+    if [[ -f "$prefix/etc/homebrew/brew.env" ]]; then
+        backup="$(mktemp "$HOME/.homebrew-cn-uninstall-brew.env.XXXXXX")"
+        cp -p "$prefix/etc/homebrew/brew.env" "$backup"
+        info "安装级 brew.env 已备份到: $backup"
+    fi
+    for file in "$prefix/etc/homebrew/brew.env" "${USER_ENV_FILES[@]}"; do migrate_mirror_file "$file" env no; done
+    for file in "${SHELL_CONFIG_FILES[@]}"; do
+        [[ -f "$file" ]] || continue
+        prepared="$(mktemp)"
+        filtered="$(mktemp)"
+        filter_mirror_config "$file" shell no > "$filtered"
+        filter_shellenv_config "$filtered" "$prefix" > "$prepared"
+        save_config_file "$file" "$prepared"
+        rm -f "$prepared" "$filtered"
+    done
 }
 
 # ========== 完成信息 ==========
@@ -586,11 +799,11 @@ show_finish_info() {
     echo ""
     echo -e "  ${BOLD}安装路径:${NC}    $prefix"
     echo -e "  ${BOLD}镜像源:${NC}      $MIRROR_NAME"
-    echo -e "  ${BOLD}配置文件:${NC}    $shell_profile"
+    echo -e "  ${BOLD}镜像配置:${NC}    $prefix/etc/homebrew/brew.env"
+    echo -e "  ${BOLD}PATH 配置:${NC}   $shell_profile"
     echo ""
-    echo -e "${YELLOW}请执行以下命令使配置生效:${NC}"
-    echo ""
-    echo -e "  ${CYAN}source $shell_profile${NC}"
+    echo -e "${YELLOW}请关闭并重新打开终端，以清除旧会话的镜像变量并加载 PATH。${NC}"
+    echo -e "  BrewUI 用户请重启应用，在 Configuration 中核对镜像地址。"
     echo ""
     echo -e "然后验证安装:"
     echo ""
@@ -604,6 +817,17 @@ show_finish_info() {
     echo -e "  ${CYAN}brew upgrade${NC}              升级所有已安装的软件"
     echo -e "  ${CYAN}brew list${NC}                 列出已安装的软件"
     echo ""
+
+    if [[ "$os" == macos ]]; then
+        local version
+        version="$(sw_vers -productVersion)"
+        if [[ "${version%%.*}" -ge 26 ]]; then
+            echo -e "${BOLD}可选：安装官方 BrewUI 桌面端（macOS 26+）:${NC}"
+            echo -e "  ${CYAN}brew install --cask homebrew-app${NC}"
+            echo "  BrewUI 与终端共用以上 brew.env 镜像设置；脚本不会自动安装桌面端。"
+            echo ""
+        fi
+    fi
 
     if [[ "$os" == "linux" ]]; then
         echo -e "${BOLD}Linux 用户推荐:${NC}"
@@ -626,9 +850,9 @@ show_finish_info() {
 
     if [[ "$MIRROR_NAME" != "官方源" ]]; then
         echo -e "${BOLD}切换回官方源:${NC}"
-        echo -e "  编辑 ${CYAN}$shell_profile${NC}，删除 Homebrew 镜像配置相关行，然后运行:"
-        echo -e "  ${CYAN}git -C \"\$(brew --repo)\" remote set-url origin https://github.com/Homebrew/brew${NC}"
-        echo -e "  ${CYAN}brew update-reset${NC}"
+        echo -e "  重新运行本脚本并添加 ${CYAN}--configure${NC}，选择 ${CYAN}4) 官方源${NC}。"
+        echo "  脚本会备份并清理镜像键、恢复已有 core/cask tap 的官方源，保留其他配置。"
+        echo -e "  重新打开终端后运行 ${CYAN}brew update${NC}。"
         echo ""
     fi
 }
@@ -691,6 +915,8 @@ uninstall_homebrew() {
     fi
 
     echo ""
+
+    cleanup_homebrew_config "$prefix"
 
     # Step 1: 卸载所有 Cask
     if [[ "$cask_count" -gt 0 ]]; then
@@ -787,38 +1013,15 @@ uninstall_homebrew() {
 
     success "Homebrew 目录清理完成。"
 
-    # Step 5: 清理 Shell 配置文件中的 Homebrew 相关配置
-    info "清理 Shell 配置文件..."
     local shell_profile
     shell_profile="$(get_shell_profile)"
-
-    if [[ -f "$shell_profile" ]]; then
-        # 创建备份
-        cp "$shell_profile" "${shell_profile}.homebrew_uninstall_backup.$(date +%Y%m%d%H%M%S)"
-
-        local temp_file
-        temp_file="$(mktemp)"
-        awk '
-        /HOMEBREW_BREW_GIT_REMOTE|HOMEBREW_CORE_GIT_REMOTE|HOMEBREW_BOTTLE_DOMAIN|HOMEBREW_API_DOMAIN|HOMEBREW_CASK_GIT_REMOTE/ { next }
-        /brew shellenv/ { next }
-        /# Homebrew 镜像/ { next }
-        /# Homebrew 环境配置/ { next }
-        NF == 0 { blank++ }
-        NF > 0 { blank=0 }
-        blank <= 1 { print }
-        ' "$shell_profile" > "$temp_file" 2>/dev/null || true
-        mv "$temp_file" "$shell_profile"
-
-        success "已清理 $shell_profile 中的 Homebrew 相关配置。"
-    fi
-
     echo ""
     echo -e "${BOLD}${GREEN}============================================${NC}"
     echo -e "${BOLD}${GREEN}       Homebrew 卸载完成！✅               ${NC}"
     echo -e "${BOLD}${GREEN}============================================${NC}"
     echo ""
     echo -e "  ${BOLD}已清理的配置文件:${NC} $shell_profile"
-    echo -e "  ${BOLD}备份文件:${NC} ${shell_profile}.homebrew_uninstall_backup.*"
+    echo -e "  ${BOLD}备份文件:${NC} 配置文件旁的 *.homebrew-cn-backup.*；安装级配置备份位于 $HOME/.homebrew-cn-uninstall-brew.env.*"
     echo ""
     echo -e "${YELLOW}请执行以下命令使配置生效:${NC}"
     echo ""
@@ -830,37 +1033,67 @@ uninstall_homebrew() {
 
 # ========== 主流程 ==========
 main() {
-    # 检测系统
-    local os arch
+    local mode="install" os arch prefix homebrew_repo
+    case "${1:-}" in
+        --configure) mode="configure" ;;
+        --uninstall|-u) mode="uninstall" ;;
+        --help|-h)
+            echo "用法: install.sh [--configure | --uninstall]"
+            echo "  --configure  仅为已有 Homebrew 配置镜像（选择 4 恢复官方源），不安装或升级 Homebrew"
+            echo "  --uninstall  卸载 Homebrew，并备份/清理本脚本管理的配置"
+            return 0
+            ;;
+        "") ;;
+        *) abort "未知参数: $1。使用 --help 查看用法。" ;;
+    esac
+    [[ $# -le 1 ]] || abort "一次只能指定一个操作。"
     os="$(detect_os)"
     arch="$(detect_arch)"
+    info "检测到系统: ${BOLD}$os${NC} (${arch})"
 
-    if [[ "$os" == "macos" ]]; then
-        info "检测到系统: ${BOLD}macOS${NC} (${arch})"
-    else
-        info "检测到系统: ${BOLD}Linux${NC} (${arch})"
-    fi
-
-    # 处理命令行参数
-    if [[ "${1:-}" == "--uninstall" || "${1:-}" == "-u" ]]; then
+    if [[ "$mode" == "uninstall" ]]; then
         uninstall_homebrew "$arch" "$os"
-        exit 0
+        return
     fi
 
-    # 选择镜像源
-    select_mirror
-
-    # 前置检查
-    preflight_check "$os"
-
-    # 安装 Homebrew
-    install_homebrew "$arch" "$os"
-
-    # 显示完成信息
-    local prefix
-    prefix="$(get_homebrew_prefix "$arch" "$os")"
+    if find_existing_homebrew "$arch" "$os"; then
+        prefix="$EXISTING_PREFIX"
+        homebrew_repo="$EXISTING_REPOSITORY"
+        check_macos_support "$os" "$arch" existing
+        if [[ "$mode" != "configure" ]]; then
+            warn "检测到 Homebrew 已安装在 $prefix"
+            echo -n -e "是否要重新配置镜像源？[${GREEN}Y${NC}/${RED}n${NC}]: "
+            read -r reinstall_choice
+            if [[ "$reinstall_choice" =~ ^[Nn]$ ]]; then
+                info "已取消配置。"
+                return 0
+            fi
+        fi
+        select_mirror
+        configure_mirror "$prefix" "$homebrew_repo"
+        configure_shell_env "$arch" "$prefix" "$os"
+        verify_brew "$prefix"
+        success "镜像配置完成；未更新或升级已有 Homebrew。"
+        info "重新打开终端后运行 brew update，验证所选源的实际更新。"
+    else
+        if [[ "$mode" == "configure" ]]; then
+            abort "未找到已有 Homebrew。--configure 只负责配置，不会安装；请先运行不带参数的安装命令。"
+        fi
+        check_macos_support "$os" "$arch" new
+        select_mirror
+        preflight_check "$os"
+        install_homebrew "$arch" "$os"
+        prefix="$(get_homebrew_prefix "$arch" "$os")"
+    fi
     show_finish_info "$prefix" "$os"
 }
 
-# 运行主流程
-main "$@"
+# 允许测试通过 source 加载函数；兼容 bash、zsh 直接运行与 -c 安装命令。
+if [[ -n "${ZSH_VERSION:-}" ]]; then
+    case "$ZSH_EVAL_CONTEXT" in
+        *:file) ;;
+        *) main "$@" ;;
+    esac
+elif [[ "${BASH_SOURCE[0]:-$0}" == "$0" ]]; then
+    main "$@"
+fi
