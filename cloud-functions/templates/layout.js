@@ -7,6 +7,7 @@ import { getOnboardingPanel } from './onboarding.js';
 import { getStatsCard } from './stats-card.js';
 import { getStyles } from './styles.js';
 import { getTroubleshootingGuide } from './troubleshooting.js';
+import { getSupportDialog } from './support.js';
 
 // 沿用生产站工作区结构，将 V7 引导融合到安装面板。
 export function renderPage() {
@@ -112,6 +113,7 @@ ${getStyles()}
         </main>
         ${getFooter()}
     </div>
+    ${getSupportDialog()}
     <div id="copy-feedback" class="toast" role="status" aria-live="polite"></div>
     ${getClientScript()}
 </body>
