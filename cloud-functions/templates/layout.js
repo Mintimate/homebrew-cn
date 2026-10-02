@@ -1,12 +1,14 @@
 import { getClientScript } from './client-script.js';
 import { getEnvDetails } from './faq.js';
-import { getFeatures, getStepsAndMirrors, getVideoCard } from './features.js';
+import { getFeatures, getQuickHelp, getStepsAndMirrors, getVideoCard } from './features.js';
 import { getFooter } from './footer.js';
 import { getHero } from './hero.js';
+import { getOnboardingPanel } from './onboarding.js';
 import { getStatsCard } from './stats-card.js';
 import { getStyles } from './styles.js';
+import { getTroubleshootingGuide } from './troubleshooting.js';
 
-// 组装完整 HTML 页面
+// 沿用生产站工作区结构，将 V7 引导融合到安装面板。
 export function renderPage() {
   return `<!DOCTYPE html>
 <html lang="zh-CN">
@@ -35,165 +37,82 @@ export function renderPage() {
     <link rel="icon" href="/favicon.svg" type="image/svg+xml" sizes="any">
     <link rel="icon" href="/favicon.ico" type="image/x-icon">
     <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://brew-cn.mintimate.cn/#website","url":"https://brew-cn.mintimate.cn/","name":"Homebrew CN","inLanguage":"zh-CN"},{"@type":"WebPage","@id":"https://brew-cn.mintimate.cn/#webpage","url":"https://brew-cn.mintimate.cn/","name":"Homebrew CN 镜像一键安装","description":"面向国内网络环境的 Homebrew 一键安装脚本，支持 macOS、Linux 与多个镜像源。","inLanguage":"zh-CN","isPartOf":{"@id":"https://brew-cn.mintimate.cn/#website"},"mainEntity":{"@type":"SoftwareApplication","name":"Homebrew CN 安装脚本","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux","downloadUrl":"https://brew-cn.mintimate.cn/install","license":"https://opensource.org/license/mit","isAccessibleForFree":true}}]}</script>
-    ${getStyles()}
-    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js"></script>
+    <script>try{var t=localStorage.getItem('brew-cn-theme');document.documentElement.dataset.theme=t==='light'||t==='dark'?t:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}catch(e){}</script>
+${getStyles()}
+    <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
 </head>
 <body>
+    <a class="skip-link" href="#main">跳到主要内容</a>
     <div class="container">
         ${getHero()}
-
-        <!-- 终端仪表盘 (核心组件) -->
-        <div class="terminal-dashboard reveal" id="ai-chat-window">
-            <!-- 终端头部 -->
-            <div class="terminal-header">
-                <div class="terminal-dots">
-                    <span class="terminal-dot red"></span>
-                    <span class="terminal-dot yellow"></span>
-                    <span class="terminal-dot green"></span>
-                </div>
-                <div class="terminal-tabs">
-                    <button class="terminal-tab active" data-tab="install" onclick="switchTerminalTab('install')">
-                        <svg class="tab-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>
-                        install.sh
-                    </button>
-                    <button class="terminal-tab" data-tab="ai-chat" onclick="switchTerminalTab('ai-chat')">
-                        <svg class="tab-icon" viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"></path></svg>
-                        brew-ai
-                    </button>
-                </div>
-                <div class="terminal-status">
-                    <span class="status-indicator online"></span>
-                    <span class="status-text">connected</span>
-                </div>
+        <main id="main">
+            <section class="terminal-dashboard" id="ai-chat-window" aria-label="安装与 AI 排障">
+    <div class="terminal-header">
+      <div class="terminal-identity" aria-hidden="true"><span class="terminal-dot red"></span><span class="terminal-dot yellow"></span><span class="terminal-dot green"></span></div>
+      <div class="terminal-tabs" role="tablist" aria-label="工作区">
+        <button id="tab-install" class="terminal-tab active" role="tab" aria-selected="true" aria-controls="panel-install" data-tab="install" onclick="switchTerminalTab('install')"><svg class="icon " xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19h8"></path><path d="m4 17 6-6-6-6"></path></svg>安装</button>
+        <button id="tab-ai-chat" class="terminal-tab" role="tab" aria-selected="false" aria-controls="panel-ai-chat" tabindex="-1" data-tab="ai-chat" onclick="switchTerminalTab('ai-chat')"><svg class="icon " xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 17a2 2 0 0 1-2 2H6.828a2 2 0 0 0-1.414.586l-2.202 2.202A.71.71 0 0 1 2 21.286V5a2 2 0 0 1 2-2h16a2 2 0 0 1 2 2z"></path></svg>AI 排障</button>
+      </div>
+      <button id="workspace-expand" class="icon-btn" type="button" aria-label="展开工作区" aria-pressed="false" data-tooltip="展开工作区"><svg class="icon " xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 3h6v6"></path><path d="m21 3-7 7"></path><path d="m3 21 7-7"></path><path d="M9 21H3v-6"></path></svg></button>
+    </div>
+    <div class="terminal-body">
+      ${getOnboardingPanel()}
+      <div class="terminal-panel" id="panel-ai-chat" role="tabpanel" aria-labelledby="tab-ai-chat" hidden>
+        <div class="ai-chat-container">
+          <div class="chat-top-actions"><div id="agent-tool-panel" role="status" aria-live="polite">Homebrew 助手</div>
+            <button type="button" class="text-action" id="help-guide-resume" hidden>继续填写信息</button>
+            <button type="button" class="text-action" id="chat-new-conversation" title="开始新对话，保留未发送的内容">新对话</button>
+            <button class="icon-btn chat-share-btn" onclick="shareConversation()" aria-label="导出对话图片" data-tooltip="导出对话图片"><svg class="icon " xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 15V3"></path><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path><path d="m7 10 5 5 5-5"></path></svg></button>
+          </div>
+          <div class="chat-messages" id="chat-messages" role="region" aria-label="对话记录" tabindex="0">
+            ${getTroubleshootingGuide()}
+            <div class="chat-empty" id="chat-empty"><span class="chat-empty-emblem"><svg class="icon assistant-mark empty-icon" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" width="24" height="24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true" focusable="false">
+    <path d="M6.5 9.5 v8.5 a2 2 0 0 0 2 2 h3 a2 2 0 0 0 2 -2 v-8.5"/>
+    <path d="M13.5 11.5 h2 a1.5 1.5 0 0 1 1.5 1.5 v3 a1.5 1.5 0 0 1 -1.5 1.5 h-2"/>
+    <path d="M18 3 Q18 7 22 7 Q18 7 18 11 Q18 7 14 7 Q18 7 18 3 Z" fill="currentColor" stroke="none" opacity="0.8"/>
+  </svg></span><h2>Homebrew 遇到什么问题？</h2>
+              <div class="chat-quick-flags">
+                <button class="flag-btn" data-quick-action="mirror"><svg class="icon " xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M22 12h-2.48a2 2 0 0 0-1.93 1.46l-2.35 8.36a.25.25 0 0 1-.48 0L9.24 2.18a.25.25 0 0 0-.48 0l-2.35 8.36A2 2 0 0 1 4.49 12H2"></path></svg>检测镜像</button>
+                <button class="flag-btn" data-quick-action="missing"><svg class="icon " xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 19h8"></path><path d="m4 17 6-6-6-6"></path></svg>找不到 brew</button>
+                <button class="flag-btn" data-quick-action="search"><svg class="icon " xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m21 21-4.34-4.34"></path><circle cx="11" cy="11" r="8"></circle></svg>查询软件包</button>
+                <button class="flag-btn" data-quick-action="restore"><svg class="icon " xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"></path><path d="M3 3v5h5"></path></svg>恢复官方源</button>
+              </div>
+              <div class="help-scenarios" aria-label="按遇到的问题获取帮助">
+                <button type="button" class="flag-btn help-scenario" data-quick-action="doctor"><strong>这些警告需要处理吗？</strong><span>先判断影响哪些软件、能否继续安装，以及是否需要处理。</span><span class="help-scenario-link">粘贴提示，帮我判断 →</span></button>
+                <button type="button" class="flag-btn help-scenario" data-quick-action="desktop"><strong>桌面版下载慢或失败？</strong><span>先检查下载设置，再判断从哪里排查。</span><span class="help-scenario-link">跟着指引检查 →</span></button>
+              </div>
             </div>
-            
-            <!-- 终端主体 -->
-            <div class="terminal-body">
-                <!-- 面板 1: 安装与卸载命令 -->
-                <div class="terminal-panel active" id="panel-install">
-                    <div class="os-selector-wrapper">
-                        <span class="selector-label">选择你的系统:</span>
-                        <div class="os-segmented-control">
-                            <button class="os-segment active" data-os="macos" onclick="switchOS('macos')">🍎 macOS</button>
-                            <button class="os-segment" data-os="linux" onclick="switchOS('linux')">🐧 Linux</button>
-                        </div>
-                    </div>
-                    
-                    <!-- macOS 面板 -->
-                    <div class="os-panel" id="os-macos">
-                        <div class="cmd-section">
-                            <div class="cmd-header">
-                                <span class="cmd-label">🚀 安装命令</span>
-                                <button class="copy-btn-modern" onclick="copyCommand('install-command-macos', this)">
-                                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                                    <span>复制</span>
-                                </button>
-                            </div>
-                            <div class="cmd-box-modern"><span class="prompt">brew-cn $</span> <span id="install-command-macos">/bin/zsh -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)"</span></div>
-                        </div>
-                        
-                        <div class="cmd-section">
-                            <div class="cmd-header">
-                                <span class="cmd-label">🗑️ 卸载命令</span>
-                                <button class="copy-btn-modern" onclick="copyCommand('uninstall-command-macos', this)">
-                                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                                    <span>复制</span>
-                                </button>
-                            </div>
-                            <div class="cmd-box-modern"><span class="prompt">brew-cn $</span> <span id="uninstall-command-macos">/bin/zsh -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)" -- --uninstall</span></div>
-                        </div>
-                        <p class="panel-hint">⚠️ macOS 用户需先安装 Xcode Command Line Tools（脚本会自动检测并提示安装）</p>
-                    </div>
-                    
-                    <!-- Linux 面板 -->
-                    <div class="os-panel" id="os-linux" style="display:none">
-                        <div class="cmd-section">
-                            <div class="cmd-header">
-                                <span class="cmd-label">🚀 安装命令</span>
-                                <button class="copy-btn-modern" onclick="copyCommand('install-command-linux', this)">
-                                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                                    <span>复制</span>
-                                </button>
-                            </div>
-                            <div class="cmd-box-modern"><span class="prompt">brew-cn $</span> <span id="install-command-linux">/bin/bash -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)"</span></div>
-                        </div>
-                        
-                        <div class="cmd-section">
-                            <div class="cmd-header">
-                                <span class="cmd-label">🗑️ 卸载命令</span>
-                                <button class="copy-btn-modern" onclick="copyCommand('uninstall-command-linux', this)">
-                                    <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-                                    <span>复制</span>
-                                </button>
-                            </div>
-                            <div class="cmd-box-modern"><span class="prompt">brew-cn $</span> <span id="uninstall-command-linux">/bin/bash -c "$(curl -fsSL https://brew-cn.mintimate.cn/install)" -- --uninstall</span></div>
-                        </div>
-                        <p class="panel-hint">⚠️ Linux 用户需先安装构建依赖（build-essential / Development Tools 等，脚本会自动检测并提示安装）</p>
-                    </div>
-                    
-                    <div class="panel-footer-links">
-                        <span class="footer-hint">💡 自动适配 Intel/Apple Silicon (ARM64) · 运行后可交互选择镜像源</span>
-                        <div class="footer-actions">
-                            <a href="https://www.bilibili.com/video/BV1AEX9BsELi/" target="_blank" rel="noopener noreferrer" class="footer-action-link link-bili">📺 视频安装教程 (点个关注，助力破1w粉丝)</a>
-                            <a href="https://ifdian.net/a/mintimate" target="_blank" rel="noopener noreferrer" class="footer-action-link link-afd">❤ 去爱发电支持</a>
-                        </div>
-                    </div>
-                </div>
-                
-                <div class="terminal-panel" id="panel-ai-chat" style="display:none">
-                    <div class="ai-chat-container">
-                        <div class="chat-top-actions">
-                            <div class="agent-tool-panel" id="agent-tool-panel" aria-label="Agent 工具状态"></div>
-                            <a href="https://www.mintimate.cn/2026/06/30/workbuddyMakeAgent" target="_blank" rel="noopener noreferrer" class="chat-doc-link">🤖 Agent 实现教程</a>
-                            <button class="chat-share-btn" onclick="shareConversation()" title="分享对话为图片">
-                                <svg viewBox="0 0 24 24" width="13" height="13" fill="none" stroke="currentColor" stroke-width="2.5"><path d="M23 19a2 2 0 0 1-2 2H3a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h4l2-3h6l2 3h4a2 2 0 0 1 2 2z"></path><circle cx="12" cy="13" r="4"></circle></svg>
-                                <span>分享对话</span>
-                            </button>
-                        </div>
-                        
-                        <div class="chat-messages" id="chat-messages">
-                            <div class="message system">
-                                <div class="msg-content">
-                                    你好！我是 <strong>homebrew-cn 智能助手</strong>。<br><br>我可以帮你快速安装 Homebrew、进行国内镜像源检测、查询软件安装，或者解决各种环境变量与安装报错问题。
-                                </div>
-                            </div>
-                        </div>
-                        
-                        <div class="chat-footer">
-                            <!-- 快捷操作建议 -->
-                            <div class="chat-quick-flags">
-                                <button class="flag-btn" onclick="sendQuickAction('运行在线镜像检测')">镜像检测 --check-mirror</button>
-                                <button class="flag-btn" onclick="sendQuickAction('搜索软件 vscode')">软件搜索 --search-formula</button>
-                                <button class="flag-btn" onclick="sendQuickAction('Mac 找不到 brew 命令')">找不到命令 --no-command</button>
-                                <button class="flag-btn" onclick="sendQuickAction('如何恢复官方源？')">恢复官方源 --restore-official</button>
-                            </div>
-                            
-                            <!-- 输入框 -->
-                            <div class="chat-input-wrapper">
-                                <span class="input-prompt">brew-ai $</span>
-                                <textarea id="chat-input" placeholder="输入问题或粘贴报错..." rows="1"></textarea>
-                                <button id="chat-send-btn" class="chat-send-btn" disabled>
-                                    <svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" stroke-width="2.5"><line x1="22" y1="2" x2="11" y2="13"></line><polygon points="22 2 15 22 11 13 2 9 22 2"></polygon></svg>
-                                </button>
-                            </div>
-                        </div>
-                    </div>
-                </div>
+          </div>
+          <div class="chat-footer" id="chat-footer">
+            <button id="chat-jump-latest" class="icon-btn jump-latest" type="button" aria-label="回到最新回复" data-tooltip="最新回复" hidden><svg class="icon " xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 5v14"></path><path d="m19 12-7 7-7-7"></path></svg></button>
+            <div id="chat-feedback" class="chat-feedback" role="status"></div>
+            <div id="package-query-mode" class="package-query-mode" hidden><span>查询软件包</span><button id="package-query-cancel" class="icon-btn" type="button" aria-label="取消软件查询" data-tooltip="取消软件查询"><svg class="icon " xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M18 6 6 18"></path><path d="m6 6 12 12"></path></svg></button></div>
+            <div id="chat-attachments" class="chat-attachments" aria-label="待发送截图"></div>
+            <div class="chat-input-wrapper">
+              <textarea id="chat-input" aria-label="Homebrew 问题" aria-describedby="chat-input-hint" placeholder="输入问题，或粘贴多行终端日志…" rows="3"></textarea>
+              <button id="chat-send-btn" class="icon-btn chat-send-btn" aria-label="发送消息" aria-keyshortcuts="Control+Enter Meta+Enter" data-tooltip="发送消息" disabled><svg class="icon " xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m5 12 7-7 7 7"></path><path d="M12 19V5"></path></svg></button>
             </div>
+            <p class="chat-input-hint" id="chat-input-hint">可以接着追问，不用重复粘贴报告 · Enter 换行 · Ctrl / ⌘ + Enter 发送</p>
+          </div>
         </div>
-
-        <!-- 媒体与数据区域 -->
-        <div class="media-grid">
-            ${getStatsCard()}
-            ${getVideoCard()}
-        </div>
-
-        ${getFeatures()}
-        ${getStepsAndMirrors()}
-        ${getEnvDetails()}
+      </div>
+    </div>
+  </section>
+            <section class="project-overview" id="project-overview" aria-label="项目数据与视频教程">
+                ${getStatsCard()}
+                ${getVideoCard()}
+            </section>
+            ${getFeatures()}
+            ${getQuickHelp()}
+            <details class="support-details" id="installation-help">
+                <summary>镜像与配置参考 <svg class="icon disclosure-icon" xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.75" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"></path></svg></summary>
+                ${getStepsAndMirrors()}
+                ${getEnvDetails()}
+            </details>
+        </main>
         ${getFooter()}
     </div>
-
+    <div id="copy-feedback" class="toast" role="status" aria-live="polite"></div>
     ${getClientScript()}
 </body>
 </html>`;

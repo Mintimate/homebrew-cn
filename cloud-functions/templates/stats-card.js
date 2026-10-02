@@ -1,18 +1,11 @@
-// 实时数据卡片模板
+// 返回 project-overview 内的统计模块；数值由客户端请求更新。
 export function getStatsCard() {
   return `
-            <div class="card reveal">
-                <div class="card-title">实时数据</div>
-                <div class="stats-grid">
-                    <div class="stat-card"><span class="stat-value" id="total-calls">-</span><span class="stat-label">累计安装次数</span></div>
-                    <div class="stat-card"><span class="stat-value" id="last-call" style="font-size:1.25rem">-</span><span class="stat-label">最近一次安装</span></div>
-                </div>
-                <div class="recent-installs">
-                    <div class="card-title" style="font-size:1.1rem;margin-bottom:12px">🌍 最近安装的网友来自</div>
-                    <div class="recent-list" id="recent-installs">
-                        <div class="recent-placeholder" style="text-align:center;color:var(--text-muted);font-size:.9rem;padding:16px 0">加载中...</div>
-                    </div>
-                    <div id="recent-toggle-container"></div>
-                </div>
-            </div>`;
+    <div class="project-stats"><h2>项目数据</h2><div class="stats-grid">
+    <div><span class="stat-label">脚本获取</span><span class="stat-value" id="total-calls">—</span><span class="stat-label">次</span></div>
+    <div><span class="stat-label">最近获取</span><span class="stat-value" id="last-call">—</span></div>
+  </div><details class="recent-installs"><summary>最近获取地区</summary>
+    <p class="recent-placeholder" style="font-size:12px;margin:6px 0 10px">按脚本请求计数，包含重复获取、配置及卸载请求，不代表成功安装人数。</p>
+    <div id="recent-installs"><p class="recent-placeholder">加载中…</p></div><div id="recent-toggle-container"></div>
+  </details></div>`;
 }
