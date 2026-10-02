@@ -164,6 +164,80 @@ main ${args}
     assert.equal(readdirSync(f.home).filter(name => name.startsWith(`${profile.split('/').at(-1)}.homebrew-cn-backup.`)).length, profileBackups.length);
   });
 
+  test(`${label}: declining mirror configuration reports the installed version and leaves the installation untouched`, (t) => {
+    const f = fixture(t, shell);
+    const profile = join(f.home, label === 'zsh' ? '.zshrc' : '.bash_profile');
+    const envFile = join(f.prefix, 'etc/homebrew/brew.env');
+    const profileContents = 'export EDITOR=vim\n';
+    const envContents = 'HOMEBREW_API_DOMAIN=https://old.example/api\n';
+    f.put(profile, profileContents);
+    f.put(envFile, envContents);
+    const homeFiles = readdirSync(f.home);
+    const configFiles = readdirSync(join(f.prefix, 'etc/homebrew'));
+
+    const result = f.run("main <<<'n'");
+    ok(result);
+    const output = result.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+    assert.ok(output.includes(`[信息] 已安装 Homebrew 7.0.0，路径：${f.prefix}`), output);
+    assert.match(output, /本次仅调整镜像配置，不升级 Homebrew 或已安装的软件。/);
+    assert.ok(output.indexOf('已安装 Homebrew 7.0.0') < output.indexOf('是否继续配置镜像？[Y/n]:'), output);
+    assert.match(output, /已取消配置/);
+    assert.doesNotMatch(output, /请选择镜像源|安装\/配置完成/);
+    assert.equal(f.calls(), 'brew --prefix\nbrew --repo\nbrew --version\n');
+    assert.equal(f.contents(profile), profileContents);
+    assert.equal(f.contents(envFile), envContents);
+    assert.deepEqual(readdirSync(f.home), homeFiles);
+    assert.deepEqual(readdirSync(join(f.prefix, 'etc/homebrew')), configFiles);
+  });
+
+  test(`${label}: a broken installed brew exits before confirmation, mirror selection or configuration writes`, (t) => {
+    const f = fixture(t, shell);
+    const profile = join(f.home, label === 'zsh' ? '.zshrc' : '.bash_profile');
+    const envFile = join(f.prefix, 'etc/homebrew/brew.env');
+    const profileContents = 'export EDITOR=vim\n';
+    const envContents = 'HOMEBREW_API_DOMAIN=https://old.example/api\n';
+    f.put(profile, profileContents);
+    f.put(envFile, envContents);
+    const homeFiles = readdirSync(f.home);
+    const configFiles = readdirSync(join(f.prefix, 'etc/homebrew'));
+
+    for (const args of ['', '--configure']) {
+      const result = f.run(`main ${args} <<<'1'`, { TEST_VERSION_STATUS: '18', TEST_VERSION_ERROR: 'mock version diagnostic' });
+      assert.equal(result.status, 1, result.stdout + result.stderr);
+      assert.match(result.stdout + result.stderr, /mock version diagnostic/);
+      assert.match(result.stdout, /\[错误\]/);
+      assert.match(result.stdout, /尚未修改/);
+      assert.doesNotMatch(result.stdout, /是否继续配置镜像|请选择镜像源|安装\/配置完成/);
+      assert.equal(f.contents(profile), profileContents);
+      assert.equal(f.contents(envFile), envContents);
+      assert.deepEqual(readdirSync(f.home), homeFiles);
+      assert.deepEqual(readdirSync(join(f.prefix, 'etc/homebrew')), configFiles);
+    }
+    assert.equal(f.calls(), 'brew --prefix\nbrew --repo\nbrew --version\n'.repeat(2));
+  });
+
+  test(`${label}: both existing-install entry points explain the scope before selecting a mirror`, (t) => {
+    for (const args of ['', '--configure']) {
+      const f = fixture(t, shell);
+      const result = f.run(args ? "main --configure <<<'1'" : "main <<<$'\\n1'");
+      ok(result);
+      const output = result.stdout.replace(/\x1b\[[0-9;]*m/g, '');
+      const versionPosition = output.indexOf('已安装 Homebrew 7.0.0');
+      const scopePosition = output.indexOf('本次仅调整镜像配置，不升级 Homebrew 或已安装的软件。');
+      const menuPosition = output.indexOf('请选择镜像源');
+      assert.ok(versionPosition >= 0 && versionPosition < scopePosition && scopePosition < menuPosition, output);
+      if (args) {
+        assert.doesNotMatch(output, /是否继续配置镜像/);
+      } else {
+        const confirmationPosition = output.indexOf('是否继续配置镜像？[Y/n]:');
+        assert.ok(scopePosition < confirmationPosition && confirmationPosition < menuPosition, output);
+      }
+      assert.match(output, /镜像配置完成/);
+      assert.ok(f.calls().indexOf('brew --version') < f.calls().indexOf('git '), f.calls());
+      assert.doesNotMatch(f.calls(), /brew update|git .*fetch|checkout|reset/);
+    }
+  });
+
   test(`${label}: official restore cleans only mirror keys and restores existing tap remotes`, (t) => {
     const f = fixture(t, shell);
     for (const tap of ['core', 'cask']) mkdirSync(join(f.prefix, `Library/Taps/homebrew/homebrew-${tap}/.git`), { recursive: true });
@@ -347,6 +421,7 @@ MIRROR_NAME=USTC; show_finish_info "$TEST_PREFIX" macos
     const result = f.run("main --configure <<<'1'", { TEST_VERSION_OUTPUT: 'Homebrew 6.4.2' });
     ok(result);
     assert.match(result.stdout, /Homebrew 6\.4\.2/);
+    assert.ok(result.stdout.indexOf('已安装 Homebrew 6.4.2') < result.stdout.indexOf('请选择镜像源'), result.stdout);
     assert.match(result.stdout, /未更新或升级已有 Homebrew/);
     assert.match(result.stdout, /brew update/);
     assert.doesNotMatch(f.calls(), /brew update|git .*fetch|checkout|reset/);
@@ -375,6 +450,8 @@ printf 'DETECTED_VERSION=<%s>\\n' "$HOMEBREW_DETECTED_VERSION"
 `, { TEST_VERSION_OUTPUT: versionOutput });
       ok(result);
       assert.match(result.stdout, /未能识别/);
+      assert.ok(result.stdout.indexOf('未能识别') < result.stdout.indexOf('请选择镜像源'), result.stdout);
+      assert.doesNotMatch(result.stdout, /Homebrew 7\.0\.0/);
       assert.match(result.stdout, /DETECTED_VERSION=<>/);
       assert.match(result.stdout, /未更新或升级已有 Homebrew/);
       const summary = result.stdout.slice(result.stdout.indexOf('安装/配置完成'));

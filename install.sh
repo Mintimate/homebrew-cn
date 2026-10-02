@@ -491,18 +491,26 @@ run_brew_clean() {
         -u HOMEBREW_API_DOMAIN "$@"
 }
 
-verify_brew() {
-    local prefix="$1" mode="${2:-existing}" version_output major
+# 确认前的只读展示与操作后的验证共用版本解析。
+read_brew_version() {
+    local prefix="$1"
     HOMEBREW_DETECTED_VERSION=""
-    if ! version_output="$(run_brew_clean "$prefix/bin/brew" --version)"; then
-        printf '%s\n' "$version_output"
-        abort "Homebrew 验证失败，安装/配置尚未完成。请运行 \"$prefix/bin/brew\" --version 检查错误后重试。"
+    if ! HOMEBREW_VERSION_OUTPUT="$(run_brew_clean "$prefix/bin/brew" --version)"; then
+        return 1
     fi
-    printf '%s\n' "$version_output"
     # 兼容稳定版及 Git 开发版本后缀；不将仅包含 SHA 等未知输出当成版本。
-    HOMEBREW_DETECTED_VERSION="$(printf '%s\n' "$version_output" | awk '
+    HOMEBREW_DETECTED_VERSION="$(printf '%s\n' "$HOMEBREW_VERSION_OUTPUT" | awk '
         NR == 1 && $1 == "Homebrew" && $2 ~ /^[0-9]+\.[0-9]+\.[0-9]+([-+][[:alnum:].+-]+)?$/ { print $2 }
     ')"
+}
+
+verify_brew() {
+    local prefix="$1" mode="${2:-existing}" major
+    if ! read_brew_version "$prefix"; then
+        printf '%s\n' "$HOMEBREW_VERSION_OUTPUT"
+        abort "Homebrew 验证失败，安装/配置尚未完成。请运行 \"$prefix/bin/brew\" --version 检查错误后重试。"
+    fi
+    printf '%s\n' "$HOMEBREW_VERSION_OUTPUT"
     if [[ -z "$HOMEBREW_DETECTED_VERSION" ]]; then
         if [[ "$mode" == "new" ]]; then
             abort "Homebrew 可以运行，但无法确认实际版本，安装尚未完成验证。已写入的文件和配置会保留。请运行 \"$prefix/bin/brew\" --version 检查输出，并重新打开终端运行 brew update 后重试；所选源可能尚未同步，也可通过 --configure 更换镜像源。"
@@ -1091,9 +1099,19 @@ main() {
         prefix="$EXISTING_PREFIX"
         homebrew_repo="$EXISTING_REPOSITORY"
         check_macos_support "$os" "$arch" existing
+        if ! read_brew_version "$prefix"; then
+            printf '%s\n' "$HOMEBREW_VERSION_OUTPUT"
+            abort "无法读取当前 Homebrew 版本，尚未修改任何配置。请运行 \"$prefix/bin/brew\" --version 检查错误后重试。"
+        fi
+        if [[ -n "$HOMEBREW_DETECTED_VERSION" ]]; then
+            info "已安装 Homebrew $HOMEBREW_DETECTED_VERSION，路径：$prefix"
+        else
+            info "已安装 Homebrew，路径：$prefix"
+            warn "当前版本未能识别，可运行 brew --version 检查；仍可继续配置镜像。"
+        fi
+        info "本次仅调整镜像配置，不升级 Homebrew 或已安装的软件。"
         if [[ "$mode" != "configure" ]]; then
-            warn "检测到 Homebrew 已安装在 $prefix"
-            echo -n -e "是否要重新配置镜像源？[${GREEN}Y${NC}/${RED}n${NC}]: "
+            echo -n -e "是否继续配置镜像？[${GREEN}Y${NC}/${RED}n${NC}]: "
             read -r reinstall_choice
             if [[ "$reinstall_choice" =~ ^[Nn]$ ]]; then
                 info "已取消配置。"
