@@ -41,7 +41,7 @@ export function renderPage() {
     <script type="application/ld+json">{"@context":"https://schema.org","@graph":[{"@type":"WebSite","@id":"https://brew-cn.mintimate.cn/#website","url":"https://brew-cn.mintimate.cn/","name":"Homebrew CN","inLanguage":"zh-CN"},{"@type":"WebPage","@id":"https://brew-cn.mintimate.cn/#webpage","url":"https://brew-cn.mintimate.cn/","name":"Homebrew CN 镜像一键安装","description":"面向国内网络环境的 Homebrew 一键安装脚本，支持 macOS、Linux 与多个镜像源。","inLanguage":"zh-CN","isPartOf":{"@id":"https://brew-cn.mintimate.cn/#website"},"mainEntity":{"@type":"SoftwareApplication","name":"Homebrew CN 安装脚本","applicationCategory":"DeveloperApplication","operatingSystem":"macOS, Linux","downloadUrl":"https://brew-cn.mintimate.cn/install","license":"https://opensource.org/license/mit","isAccessibleForFree":true}}]}</script>
     <script>try{var t=localStorage.getItem('brew-cn-theme');document.documentElement.dataset.theme=t==='light'||t==='dark'?t:matchMedia('(prefers-color-scheme: dark)').matches?'dark':'light'}catch(e){}</script>
 ${getStyles()}
-    <script async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8322854923336162" crossorigin="anonymous"></script>
+    <script id="adsense-loader" async src="https://pagead2.googlesyndication.com/pagead/js/adsbygoogle.js?client=ca-pub-8322854923336162" crossorigin="anonymous" onerror="this.dataset.loadFailed='true'"></script>
     <script src="https://cdn.jsdelivr.net/npm/marked/marked.min.js" defer></script>
 </head>
 <body>

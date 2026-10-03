@@ -320,9 +320,13 @@ export function getStyles() {
     .spin-svg, .spin-loader { animation: spin 1.2s linear infinite; }
     .spin-loader { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; }
     .section { padding: 32px 0; border-bottom: 1px solid var(--border); }
-    .installation-ad { width: 100%; min-width: 0; min-height: 220px; margin-top: 24px; padding-block: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
-    .ad-label { display: block; margin: 0 12px 8px; font-size: 11px; line-height: 1.5; color: var(--text-muted); }
-    .installation-ad:has(.adsbygoogle[data-ad-status="unfilled"]) { display: none; }
+    /* Pending ads need measurable width, but no decorated empty placeholder. */
+    .installation-ad { width: 100%; min-width: 0; }
+    .installation-ad iframe { border: 0; }
+    .installation-ad .ad-label { display: none; margin-bottom: 8px; font-size: 11px; line-height: 1.5; color: var(--text-muted); }
+    .installation-ad[data-ad-state="filled"] { margin-top: 24px; }
+    .installation-ad[data-ad-state="filled"] .ad-label { display: block; }
+    .installation-ad[data-ad-state="unavailable"] { display: none; }
     .project-overview { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px 24px; align-items: start; padding: 18px 0 8px; }
     .project-stats { min-width: 0; }
     .project-stats h2 { font-size: .875rem; }
