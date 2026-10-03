@@ -320,6 +320,9 @@ export function getStyles() {
     .spin-svg, .spin-loader { animation: spin 1.2s linear infinite; }
     .spin-loader { width: 16px; height: 16px; border: 2px solid var(--border); border-top-color: var(--accent); border-radius: 50%; }
     .section { padding: 32px 0; border-bottom: 1px solid var(--border); }
+    .installation-ad { width: 100%; min-width: 0; min-height: 220px; margin-top: 24px; padding-block: 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--surface); }
+    .ad-label { display: block; margin: 0 12px 8px; font-size: 11px; line-height: 1.5; color: var(--text-muted); }
+    .installation-ad:has(.adsbygoogle[data-ad-status="unfilled"]) { display: none; }
     .project-overview { display: grid; grid-template-columns: minmax(0, 1fr) auto; gap: 16px 24px; align-items: start; padding: 18px 0 8px; }
     .project-stats { min-width: 0; }
     .project-stats h2 { font-size: .875rem; }
@@ -407,8 +410,9 @@ export function getStyles() {
     @keyframes message-arrive { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: translateY(0); } }
     @media (min-width: 1200px) {
       #main { display: grid; grid-template-columns: minmax(0, 1fr) 288px; align-items: start; column-gap: 32px; }
-      #ai-chat-window { grid-column: 1; min-width: 0; }
-      .project-overview { grid-column: 2; display: flex; flex-direction: column; gap: 28px; padding: 8px 0 0 24px; border-left: 1px solid var(--border); min-width: 0; }
+      #ai-chat-window { grid-column: 1; grid-row: 1; min-width: 0; }
+      .installation-ad { grid-column: 1; grid-row: 2; }
+      .project-overview { grid-column: 2; grid-row: 1 / span 2; display: flex; flex-direction: column; gap: 28px; padding: 8px 0 0 24px; border-left: 1px solid var(--border); min-width: 0; }
       .project-stats { width: 100%; }
       .project-stats h2 { font-size: 1rem; }
       .stats-grid { display: grid; grid-template-columns: 1fr; gap: 12px; margin-top: 14px; }
